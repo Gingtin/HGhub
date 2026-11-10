@@ -15,7 +15,7 @@ import { ArticlePanel, CommentsPanel, EpisodesPanel } from "./Panels";
 import { setBackHandler } from "../back";
 import {
   IBack, IBoltF, IChevR, IChevronDown, IChevronUp, IClose, ICommentF, ICompress, IExpand, IFileText, IHeart, IHeartF,
-  ILink, IList, ILockF, IPauseF, IPlayF, ISearch, IStar, IStarF, IVol, IVolMute,
+  ILink, IList, ILockF, IPauseF, IPip, IPlayF, IPlus, IRotate, ISearch, IStar, IStarF, IVol, IVolMute,
 } from "../icons";
 
 type Props = {
@@ -172,6 +172,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         authorId: -1,
         tags: post?.tags || [],
         score: 0,
+        hot: post?.hot || 0,
+        total: 1,
         like: 0,
         comment: 0,
         collect: 0,
@@ -185,6 +187,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         authorId: detail?.author?.id || -1,
         tags: detail?.tags || [],
         score: detail?.score || 0,
+        hot: cards[curId]?.hot || 0,
+        total: detail?.episodes?.length || cards[curId]?.episode_count || 0,
         like: detail?.counts?.like ?? cards[curId]?.like_count ?? 0,
         comment: detail?.counts?.comment ?? cards[curId]?.comment_count ?? 0,
         collect: detail?.counts?.collect ?? cards[curId]?.collect_count ?? 0,
@@ -199,6 +203,20 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const shareLink = () => {
     const u = kind === "post" ? (posts[curId]?.video_url || meta.title) : `https://huangguoai.com/video/${curId}/`;
     navigator.clipboard?.writeText(u).then(() => toast("链接已复制", "ok")).catch(() => {});
+  };
+
+  /* 循环切换倍速：1.0x -> 1.25x -> 1.5x -> 2.0x */
+  const cycleRate = () => {
+    if (speedLock) {
+      setSpeedLock(false);
+      toast("已解除倍速锁定", "info");
+      return;
+    }
+    const seq = [1, 1.25, 1.5, 2];
+    const next = seq[(seq.indexOf(rate) + 1) % seq.length];
+    setRate(next);
+    videoRef.current?.rate(next);
+    toast(`倍速: ${next}x`, "info");
   };
 
   /* 倍速：长按 / 锁定 → 2.0x，否则用基准倍速 */
@@ -996,44 +1014,12 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                 </div>
               )}
 
-              {/* 顶部 */}
-              {isActive && !fs && !clean && mode === "context" ? (
-                isDesktop ? (
-                  <div className="desktop-context-header">
-                    <button onClick={onBack} aria-label="返回"><IBack size={17} /></button>
-                    <span>{title}</span>
-                    <small>{index + 1} / {videoIds.length}</small>
-                  </div>
-                ) : (
-                  <div className="absolute inset-x-0 z-20 flex items-center gap-2 px-2.5" style={{ top: "calc(var(--sat, 0px) + 8px)", paddingRight: 148 }}>
-                    <button onClick={onBack} aria-label="返回" className="hg-chip w-9 h-9 rounded-full flex items-center justify-center pressable elev-1"><IBack size={20} /></button>
-                    <span className="text-[14.5px] font-semibold hg-ink hg-ov-shadow truncate">{title}</span>
-                    <span className="ml-auto px-2 py-0.5 rounded-full hg-chip text-[11px] font-semibold" style={{ color: "rgba(255,255,255,.9)" }}>{index + 1} / {videoIds.length}</span>
-                  </div>
-                )
-              ) : null}
-
-              {/* 右侧操作栏（移动端）：收藏 / 评论 / 全屏 / 分享
-                  颜色写死不跟主题走：浅色主题下这些字必须仍是白色 */}
-              {isActive && !fs && !clean && !isDesktop && (
-                <div className="absolute right-3 z-20 flex flex-col items-center gap-[16px]"
-                  style={{ bottom: `calc(var(--sab, 0px) + ${bottomInset + 92}px)` }}>
-                  <button onClick={onFav} className="flex flex-col items-center gap-1 pressable" aria-pressed={isFav(curId)} aria-label="收藏">
-                    {isFav(curId) ? <IStarF size={27} className="hg-gold" /> : <IStar size={27} className="hg-ink hg-ov-shadow" />}
-                    <span className="text-[10.5px] hg-ink-2 hg-ov-shadow">收藏</span>
-                  </button>
-                  <button onClick={() => setPanel("comments")} className="flex flex-col items-center gap-1 pressable" aria-label="评论">
-                    <ICommentF size={26} className="hg-ink hg-ov-shadow" />
-                    <span className="text-[10.5px] hg-ink-2 hg-ov-shadow">评论</span>
-                  </button>
-                  <button onClick={enterFs} className="flex flex-col items-center gap-1 pressable" aria-label="全屏">
-                    <IExpand size={26} className="hg-ink hg-ov-shadow" />
-                    <span className="text-[10.5px] hg-ink-2 hg-ov-shadow">全屏</span>
-                  </button>
-                  <button onClick={shareLink} className="flex flex-col items-center gap-1 pressable" aria-label="分享">
-                    <ILink size={25} className="hg-ink hg-ov-shadow" />
-                    <span className="text-[10.5px] hg-ink-2 hg-ov-shadow">分享</span>
-                  </button>
+              {/* 顶部 (桌面) */}
+              {isActive && !fs && !clean && mode === "context" && isDesktop && (
+                <div className="desktop-context-header">
+                  <button onClick={onBack} aria-label="返回"><IBack size={17} /></button>
+                  <span>{title}</span>
+                  <small>{index + 1} / {videoIds.length}</small>
                 </div>
               )}
 
@@ -1052,26 +1038,14 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
                 {kind === "video" && (
                   <>
-                    <button onClick={onLike} className="flex flex-col items-center gap-1 pressable" aria-pressed={isLiked(curId)}>
-                      <span key={heartBurst} className={heartBurst ? "a-pop" : ""}>
-                        {isLiked(curId) ? <IHeartF size={30} className="text-neon" /> : <IHeart size={30} className="text-white tsh" />}
-                      </span>
-                      <span className="text-[10.5px] text-white/90 tabular-nums">{fmt(likeCount)}</span>
-                    </button>
-
-                    <button onClick={() => setPanel("comments")} className="flex flex-col items-center gap-1 pressable">
-                      <ICommentF size={27} className="text-white tsh" />
-                      <span className="text-[10.5px] text-white/90 tabular-nums">{fmt(meta.comment)}</span>
-                    </button>
-
-                    <button onClick={onFav} className="flex flex-col items-center gap-1 pressable" aria-pressed={isFav(curId)}>
-                      {isFav(curId) ? <IStarF size={27} className="hg-gold" /> : <IStar size={27} className="hg-ink hg-ov-shadow" />}
-                      <span className="text-[10.5px] text-white/90 tabular-nums">{fmt(meta.collect)}</span>
-                    </button>
-
-                    <button onClick={() => setPanel("episodes")} className="flex flex-col items-center gap-1 pressable">
+                    <button onClick={() => setPanel("episodes")} className="flex flex-col items-center gap-1 pressable" aria-label="选集">
                       <IList size={26} className="text-white tsh" />
                       <span className="text-[10.5px] text-white/90">选集</span>
+                    </button>
+
+                    <button onClick={onFav} className="flex flex-col items-center gap-1 pressable" aria-pressed={isFav(curId)} aria-label="追剧">
+                      {isFav(curId) ? <IStarF size={27} className="hg-gold" /> : <IStar size={27} className="hg-ink hg-ov-shadow" />}
+                      <span className="text-[10.5px] text-white/90">{isFav(curId) ? "已追" : "追剧"}</span>
                     </button>
                   </>
                 )}
@@ -1111,30 +1085,159 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
               </div>
               )}
 
-              {/* 移动端：标题 + 详情标签 + 进度线（清屏 clean 模式下隐藏） */}
+              {/* 移动端沉浸交互浮层（居中列自适应宽屏/平板，控件贴合视频画面） */}
               {isActive && !fs && !clean && !isDesktop && (
-                <div className="absolute inset-x-0 z-20" style={{ bottom: `calc(var(--sab, 0px) + ${bottomInset}px)` }}>
-                  <div className="absolute inset-x-0 bottom-0 h-[190px] pointer-events-none"
-                    style={{ background: "linear-gradient(0deg, rgba(0,0,0,.82) 0%, rgba(0,0,0,.42) 45%, transparent 100%)" }} />
-                  <p className="relative px-4 pb-2 text-[14px] font-semibold leading-snug hg-ink hg-ov-shadow clamp-2">{meta.title}</p>
-                  <div className="relative pt-1.5 pb-2">
-                    <button onClick={() => setPanel("detail")}
-                      className="px-4 flex items-center gap-0.5 text-[10.5px] font-medium hg-ink hg-ov-shadow pressable">
-                      详情 · 第 {curEp} 集<IChevR size={11} />
-                    </button>
-                    {isActive && (
-                      <MobileFeedMiniBar
-                        duration={duration}
-                        rotated={rotated}
-                        onSeek={(target) => {
-                          dispatchMachine({ type: "SEEKING", target });
-                          timeRef.current = target;
-                          playbackProgressStore.setTime(target);
-                          videoRef.current?.seek(target, "mobile_bar");
-                        }}
-                        onTrace={(event, data) => videoRef.current?.trace(event, data)}
-                      />
+                <div className="absolute inset-0 pointer-events-none z-20 flex justify-center">
+                  <div className="relative w-full max-w-[560px] h-full pointer-events-none">
+                    {/* 上下文顶部返回条 */}
+                    {mode === "context" && (
+                      <div className="absolute inset-x-0 z-20 flex items-center gap-2 px-3 pointer-events-auto"
+                        style={{ top: "calc(var(--sat, 0px) + 8px)", paddingRight: 100 }}>
+                        <button onClick={onBack} aria-label="返回"
+                          className="w-9 h-9 rounded-full flex items-center justify-center pressable elev-2 backdrop-blur-md"
+                          style={{ background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.15)" }}>
+                          <IBack size={20} className="text-white" />
+                        </button>
+                        <span className="text-[14.5px] font-semibold text-white hg-ov-shadow truncate">{title}</span>
+                        <span className="ml-auto px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-white/90 backdrop-blur-md"
+                          style={{ background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.12)" }}>
+                          {index + 1} / {videoIds.length}
+                        </span>
+                      </div>
                     )}
+
+                    {/* 右侧实用看剧操作栏（美观、实用、无社交干扰） */}
+                    <div className="absolute right-3.5 z-20 flex flex-col items-center gap-[15px] pointer-events-auto"
+                      style={{ bottom: `calc(var(--sab, 0px) + ${bottomInset + 56}px)` }}>
+                      {/* 选集 */}
+                      {episodes.length > 0 && (
+                        <button onClick={() => setPanel("episodes")} className="flex flex-col items-center gap-1 pressable" aria-label="选集">
+                          <div className="w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md transition-all shadow-lg"
+                            style={{
+                              background: "rgba(18, 20, 26, 0.55)",
+                              border: "1px solid rgba(255, 255, 255, 0.16)",
+                            }}>
+                            <IList size={22} className="text-white drop-shadow" />
+                          </div>
+                          <span className="text-[10.5px] font-semibold hg-ink-2 hg-ov-shadow tabular-nums">第{curEp}集</span>
+                        </button>
+                      )}
+
+                      {/* 快捷倍速切换（点按即切 1.0x -> 1.25x -> 1.5x -> 2.0x） */}
+                      <button onClick={cycleRate} className="flex flex-col items-center gap-1 pressable" aria-label="切换倍速">
+                        <div className="w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md transition-all shadow-lg"
+                          style={{
+                            background: effRate !== 1 ? "rgba(96, 205, 255, 0.22)" : "rgba(18, 20, 26, 0.55)",
+                            border: effRate !== 1 ? "1px solid rgba(96, 205, 255, 0.5)" : "1px solid rgba(255, 255, 255, 0.16)",
+                            boxShadow: effRate !== 1 ? "0 0 14px rgba(96, 205, 255, 0.35)" : "0 2px 8px rgba(0,0,0,0.3)",
+                          }}>
+                          <IBoltF size={20} className={effRate !== 1 ? "text-primary" : "text-white drop-shadow"} />
+                        </div>
+                        <span className={`text-[10.5px] font-bold hg-ov-shadow tabular-nums ${effRate !== 1 ? "text-primary" : "hg-ink-2"}`}>
+                          {effRate}x
+                        </span>
+                      </button>
+
+                      {/* 追剧 / 收藏 */}
+                      <button onClick={onFav} className="flex flex-col items-center gap-1 pressable" aria-pressed={isFav(curId)} aria-label="追剧收藏">
+                        <div className="w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md transition-all shadow-lg"
+                          style={{
+                            background: isFav(curId) ? "rgba(243, 201, 105, 0.22)" : "rgba(18, 20, 26, 0.55)",
+                            border: isFav(curId) ? "1px solid rgba(243, 201, 105, 0.5)" : "1px solid rgba(255, 255, 255, 0.16)",
+                            boxShadow: isFav(curId) ? "0 0 14px rgba(243, 201, 105, 0.35)" : "0 2px 8px rgba(0,0,0,0.3)",
+                          }}>
+                          {isFav(curId) ? <IStarF size={22} className="hg-gold" /> : <IStar size={22} className="hg-ink hg-ov-shadow" />}
+                        </div>
+                        <span className={`text-[10.5px] font-semibold hg-ov-shadow ${isFav(curId) ? "hg-gold" : "hg-ink-2"}`}>
+                          {isFav(curId) ? "已追" : "追剧"}
+                        </span>
+                      </button>
+
+                      {/* 画中画小窗 */}
+                      <button onClick={togglePip} className="flex flex-col items-center gap-1 pressable" aria-label="画中画小窗">
+                        <div className="w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md transition-all shadow-lg"
+                          style={{
+                            background: "rgba(18, 20, 26, 0.55)",
+                            border: "1px solid rgba(255, 255, 255, 0.16)",
+                          }}>
+                          <IPip size={21} className="text-white drop-shadow" />
+                        </div>
+                        <span className="text-[10.5px] font-semibold hg-ink-2 hg-ov-shadow">画中画</span>
+                      </button>
+
+                      {/* 横竖全屏切换 */}
+                      <button onClick={enterFs} className="flex flex-col items-center gap-1 pressable" aria-label="全屏观看">
+                        <div className="w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md transition-all shadow-lg"
+                          style={{
+                            background: "rgba(18, 20, 26, 0.55)",
+                            border: "1px solid rgba(255, 255, 255, 0.16)",
+                          }}>
+                          <IExpand size={21} className="text-white drop-shadow" />
+                        </div>
+                        <span className="text-[10.5px] font-semibold hg-ink-2 hg-ov-shadow">全屏</span>
+                      </button>
+                    </div>
+
+                    {/* 移动端左下信息 + 进度条 */}
+                    <div className="absolute inset-x-0 z-20 pointer-events-auto" style={{ bottom: `calc(var(--sab, 0px) + ${bottomInset}px)` }}>
+                      <div className="absolute inset-x-0 bottom-0 h-[220px] pointer-events-none"
+                        style={{ background: "linear-gradient(0deg, rgba(0,0,0,.88) 0%, rgba(0,0,0,.45) 50%, transparent 100%)" }} />
+                      
+                      <div className="relative px-4 pb-1" style={{ paddingRight: 68 }}>
+                        {/* 选集胶囊芯片 + 评分 */}
+                        <div className="flex items-center gap-2 mb-2">
+                          {episodes.length > 0 && (
+                            <button
+                              onClick={() => setPanel("episodes")}
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11.5px] font-semibold text-white/95 backdrop-blur-md pressable transition-all"
+                              style={{
+                                background: "rgba(255, 255, 255, 0.16)",
+                                border: "1px solid rgba(255, 255, 255, 0.22)",
+                                boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+                              }}>
+                              <IList size={13} className="text-primary" />
+                              <span>选集 · 第 {curEp}/{episodes.length} 集</span>
+                              <IChevR size={12} className="opacity-70" />
+                            </button>
+                          )}
+                          {meta.score > 0 && (
+                            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold hg-gold"
+                              style={{ background: "rgba(243, 201, 105, 0.18)", border: "1px solid rgba(243, 201, 105, 0.3)" }}>
+                              ★ {meta.score.toFixed(1)}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* 标题 */}
+                        <h2 className="text-[14.5px] font-semibold leading-snug text-white/95 hg-ov-shadow clamp-2 mb-1.5">
+                          {meta.title}
+                        </h2>
+
+                        {/* 简介（点按可展开） */}
+                        {meta.desc && (
+                          <button onClick={() => setDescOpen((v) => !v)} className="text-left w-full pressable">
+                            <p className={`text-[11.5px] leading-relaxed text-white/70 hg-ov-shadow ${descOpen ? "" : "clamp-1"}`}>
+                              {meta.desc}
+                            </p>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* 底部迷你进度条 */}
+                      <div className="relative pb-2">
+                        <MobileFeedMiniBar
+                          duration={duration}
+                          rotated={rotated}
+                          onSeek={(target) => {
+                            dispatchMachine({ type: "SEEKING", target });
+                            timeRef.current = target;
+                            playbackProgressStore.setTime(target);
+                            videoRef.current?.seek(target, "mobile_bar");
+                          }}
+                          onTrace={(event, data) => videoRef.current?.trace(event, data)}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1235,10 +1338,10 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                           {!!meta.score && <span className="text-[12px] font-bold text-amber">{meta.score.toFixed(1)} 分</span>}
                           {episodes.length > 0 && <span className="text-[10.5px] text-mut">共 {episodes.length} 集</span>}
                         </div>
-                        <div className="flex gap-3 mt-2 text-[10.5px] text-mut">
-                          <span>点赞 {fmt(meta.like)}</span>
-                          <span>收藏 {fmt(meta.collect)}</span>
-                          <span>评论 {fmt(meta.comment)}</span>
+                        <div className="flex gap-4 mt-2 text-[11px] text-mut">
+                          <span>热度 {fmt(meta.hot)}</span>
+                          <span>追剧 {fmt(meta.collect)}</span>
+                          <span>全 {episodes.length || meta.total} 集</span>
                         </div>
                       </div>
                     </div>

@@ -63,7 +63,7 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
   return (
     <div className="absolute inset-0 bg-bg flex flex-col">
       {/* 搜索栏 */}
-      <div className="shrink-0 px-4 pb-3 flex items-center gap-2.5" style={{ paddingTop: "calc(var(--sat, 0px) + 12px)" }}>
+      <div className="shrink-0 px-4 pb-3 flex items-center gap-2.5 max-w-2xl mx-auto w-full" style={{ paddingTop: "calc(var(--sat, 0px) + 12px)" }}>
         <form className="flex-1 flex items-center gap-2 h-11 rounded-(--r-ctl) bg-s3 px-3.5 focus-within:bg-s4 transition-colors"
           onSubmit={(e) => { e.preventDefault(); submit(q); }}>
           <ISearch size={17} className="text-mut shrink-0" />
@@ -77,7 +77,7 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
         </button>
       </div>
 
-      <div className="flex-1 scroll-y px-4 pb-24">
+      <div className="flex-1 scroll-y px-4 pb-24 max-w-2xl mx-auto w-full">
         {!querying ? (
           <>
             {searchHist.length > 0 && (
@@ -172,7 +172,7 @@ export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }
     <div className="absolute inset-0 bg-bg flex flex-col">
       <div className="shrink-0 relative overflow-hidden bg-s1" style={{ paddingTop: "var(--sat, 0px)" }}>
         <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(90% 120% at 100% 0%, var(--p-pc) 0%, transparent 60%)", opacity: 0.32 }} />
-        <div className="relative px-3 pt-2 pb-4">
+        <div className="relative px-3 pt-2 pb-4 max-w-2xl mx-auto w-full">
           <button onClick={onBack} className="w-10 h-10 rounded-full flex items-center justify-center text-on hover:bg-s3 pressable"><IBack size={20} /></button>
           <div className="px-2 mt-1 flex items-end justify-between">
             <div>
@@ -192,7 +192,7 @@ export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }
         </div>
       </div>
 
-      <div className="flex-1 scroll-y px-3.5 pt-3 pb-8">
+      <div className="flex-1 scroll-y px-3.5 pt-3 pb-8 max-w-2xl mx-auto w-full">
         {loading ? (
           <div className="flex justify-center py-12"><div className="w-8 h-8 spinner" /></div>
         ) : items.length ? (

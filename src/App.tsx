@@ -28,45 +28,77 @@ const PageFallback = () => (
   </div>
 );
 
-/* ============ 底部标签栏（Android）—— 细瘦纯文字、低侵入 ============ */
+/* ============ 底部标签栏（Android / Mobile）—— 现代毛玻璃悬浮质感 + 图标文字 ============ */
 function TabBar() {
   const { tab, setTab, theme } = useStore();
-  const items: { k: Tab; label: string }[] = [
-    { k: "home", label: "首页" },
-    { k: "search", label: "搜索" },
-    { k: "category", label: "分类" },
-    { k: "profile", label: "我的" },
+  const items: { k: Tab; label: string; icon: (on: boolean) => React.ReactNode }[] = [
+    { k: "home", label: "首页", icon: (on) => on ? <IHomeF size={21} /> : <IHome size={21} strokeWidth={2} /> },
+    { k: "search", label: "搜索", icon: (on) => <ISearch size={20} strokeWidth={on ? 2.4 : 1.9} /> },
+    { k: "category", label: "分类", icon: (on) => on ? <IGridF size={20} /> : <IGrid size={20} strokeWidth={1.9} /> },
+    { k: "profile", label: "我的", icon: (on) => on ? <IUserF size={21} /> : <IUser size={21} strokeWidth={1.9} /> },
   ];
-  /* 细瘦纯文字分栏：只有选中项高亮，没有指示点。
-     首页是沉浸视频 → 底栏压深色；搜索/分类/我的 是浅色内容页 →
-     浅色主题下底栏跟着换成浅色，深色主题保持深色。 */
+
   const overVideo = tab === "home";
   const lightBar = !overVideo && theme === "light";
+
   return (
-    <nav className="hg-tabbar absolute bottom-0 inset-x-0 z-30"
+    <nav className="hg-tabbar absolute bottom-0 inset-x-0 z-30 select-none pointer-events-none"
       style={{
         paddingBottom: "var(--sab, 0px)",
-        background: lightBar ? "rgba(250, 250, 250, .97)" : overVideo ? "#000000" : "#141414",
-        borderTop: lightBar ? "1px solid rgba(0,0,0,.08)" : overVideo ? "none" : "1px solid rgba(255,255,255,.07)",
-        boxShadow: lightBar ? "0 -2px 14px rgba(0,0,0,.05)" : "none",
       }}>
-      <div className="h-[40px] flex items-center px-1">
-        {items.map(({ k, label }) => {
-          const on = tab === k;
-          return (
-            <button key={k} onClick={() => setTab(k)} className="flex-1 h-full flex items-center justify-center pressable">
-              <span className="text-[12.5px] leading-none transition-colors duration-200"
-                style={{
-                  fontWeight: on ? 700 : 400,
-                  color: lightBar
-                    ? (on ? "var(--p-primary)" : "rgba(0,0,0,.45)")
-                    : (on ? "#ffffff" : "rgba(255,255,255,.6)"),
-                }}>
-                {label}
-              </span>
-            </button>
-          );
-        })}
+      <div className="w-full max-w-[500px] mx-auto pointer-events-auto px-3 pb-1.5">
+        <div
+          className="h-[54px] rounded-2xl flex items-center px-2 transition-all duration-300"
+          style={{
+            background: lightBar
+              ? "rgba(255, 255, 255, 0.9)"
+              : overVideo
+                ? "rgba(14, 16, 22, 0.78)"
+                : "rgba(24, 26, 34, 0.88)",
+            backdropFilter: "blur(24px)",
+            WebkitBackdropFilter: "blur(24px)",
+            border: lightBar ? "1px solid rgba(0,0,0,0.06)" : "1px solid rgba(255,255,255,0.12)",
+            boxShadow: lightBar
+              ? "0 4px 20px rgba(0,0,0,0.06)"
+              : "0 8px 32px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.1)",
+          }}>
+          {items.map(({ k, label, icon }) => {
+            const on = tab === k;
+            return (
+              <button
+                key={k}
+                onClick={() => setTab(k)}
+                className="flex-1 h-full flex flex-col items-center justify-center gap-0.5 pressable relative group">
+                <span
+                  className="transition-transform duration-200"
+                  style={{
+                    color: lightBar
+                      ? (on ? "var(--p-primary)" : "rgba(0,0,0,.45)")
+                      : (on ? "var(--p-primary, #60cdff)" : "rgba(255,255,255,.6)"),
+                    transform: on ? "scale(1.08)" : "scale(1)",
+                  }}>
+                  {icon(on)}
+                </span>
+                <span
+                  className="text-[11px] leading-tight font-medium transition-colors duration-200"
+                  style={{
+                    fontWeight: on ? 700 : 500,
+                    color: lightBar
+                      ? (on ? "var(--p-primary)" : "rgba(0,0,0,.5)")
+                      : (on ? "#ffffff" : "rgba(255,255,255,.6)"),
+                  }}>
+                  {label}
+                </span>
+                {on && (
+                  <span
+                    className="absolute -bottom-0.5 w-4 h-[2.5px] rounded-full transition-all"
+                    style={{ background: lightBar ? "var(--p-primary)" : "var(--p-primary, #60cdff)", boxShadow: "0 0 8px var(--p-glow)" }}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </nav>
   );
@@ -130,7 +162,7 @@ function AppBody() {
 
   const vis = (k: Tab) => (tab === k ? "absolute inset-0" : "absolute inset-0 invisible pointer-events-none");
   const pageActive = stack.length === 0 && !loginOpen;
-  const bottomInset = isMobile ? (fs || clean ? 0 : 40) : 14;
+  const bottomInset = isMobile ? (fs || clean ? 0 : 58) : 14;
   /* 栈页（从搜索/分类/我的进入的播放页、图文页）没有底栏，
      底部只让出安全区。之前多留了 20px，视频底边会露出一条
      「底栏」似的窄缝（底部的压暗渐变到不了屏幕最底）。 */

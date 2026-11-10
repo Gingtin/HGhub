@@ -60,14 +60,14 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
 
   return (
     <div className="absolute inset-0 bg-bg flex flex-col">
-      <div className="shrink-0 px-4 pb-1" style={{ paddingTop: "calc(var(--sat, 0px) + 14px)" }}>
+      <div className="shrink-0 px-4 pb-1 max-w-3xl mx-auto w-full" style={{ paddingTop: "calc(var(--sat, 0px) + 14px)" }}>
         <div className="flex items-end gap-2.5">
           <span className="text-[24px] font-bold text-on leading-none">分类</span>
           <span className="text-[11px] text-mut pb-0.5">{CHANNELS.length + 1} 个频道 · 每周持续上新</span>
         </div>
       </div>
 
-      <div className="flex-1 scroll-y pb-24 pt-2">
+      <div className="flex-1 scroll-y pb-24 pt-2 max-w-3xl mx-auto w-full">
         {/* 排行榜入口 */}
         <button onClick={() => push({ kind: "ranks" })}
           className="mx-4 mb-5 w-[calc(100%-2rem)] flex items-center gap-3 rounded-(--r-md) bg-s2 p-3.5 text-left pressable elev-1">
@@ -204,7 +204,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
   return (
     <div className="absolute inset-0 bg-bg flex flex-col">
       <div className="shrink-0 bg-s1" style={{ paddingTop: "var(--sat, 0px)" }}>
-        <div className="px-3 pt-2 pb-3 flex items-center gap-2.5">
+        <div className="px-3 pt-2 pb-3 flex items-center gap-2.5 max-w-4xl mx-auto w-full">
           <button onClick={onBack} className="w-10 h-10 rounded-full flex items-center justify-center text-on hover:bg-s3 pressable"><IBack size={20} /></button>
           <span className="w-[40px] h-[40px] rounded-(--r-sm) bg-pc text-on-pc flex items-center justify-center"><IGrid size={21} strokeWidth={1.9} /></span>
           <div className="flex-1 min-w-0">
@@ -212,7 +212,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
             <div className="text-[10.5px] text-mut">共 {items.length} 部 · 已加载 {page}/{Math.max(pages, 1)} 页</div>
           </div>
         </div>
-        <div className="px-4 pb-3 flex gap-2">
+        <div className="px-4 pb-3 flex gap-2 max-w-4xl mx-auto w-full">
           {(["最新", "最热", "高分"] as const).map((s) => (
             <button key={s} onClick={() => setSort(s)}
               className={`px-4 h-8 rounded-(--r-ctl) text-[12px] font-semibold pressable ${sort === s ? "tonal text-on-sec" : "bg-s3 text-mut"}`}
@@ -220,7 +220,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
           ))}
         </div>
       </div>
-      <div className="flex-1 scroll-y px-4 pt-3 pb-8">
+      <div className="flex-1 scroll-y px-4 pt-3 pb-8 max-w-4xl mx-auto w-full">
         {sorted.length ? (
           <Masonry videos={sorted} wide={wide} onOpen={(v) => push({ kind: "feed", videoIds: sorted.map((x) => x.id), index: sorted.findIndex((x) => x.id === v.id), title: name })} />
         ) : err ? (

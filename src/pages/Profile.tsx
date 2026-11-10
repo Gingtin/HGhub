@@ -50,10 +50,9 @@ export default function Profile({ wide }: { wide: boolean }) {
             <div className="flex-1 min-w-0">
               <div className="text-[16px] font-bold text-on truncate">{user.nickname}</div>
               <div className="text-[11px] text-mut mt-0.5">@{user.username} · ID {user.id}</div>
-              <div className="flex gap-3 mt-2 text-[10.5px] text-mut">
-                <span>点赞 <b className="text-on">{fmt(user.counts?.like)}</b></span>
-                <span>收藏 <b className="text-on">{fmt(user.counts?.collect)}</b></span>
-                <span>关注 <b className="text-on">{fmt(user.counts?.following)}</b></span>
+              <div className="flex gap-4 mt-2 text-[11px] text-mut">
+                <span>追剧收藏 <b className="text-on">{fmt(user.counts?.collect || favs.length)}</b></span>
+                <span>观看历史 <b className="text-on">{history.length}</b></span>
               </div>
             </div>
             <button onClick={async () => { await logout(); }}
@@ -67,10 +66,10 @@ export default function Profile({ wide }: { wide: boolean }) {
             <Avatar size={56} icon={<IUser size={26} />} hue={220} ring />
             <div className="flex-1 min-w-0">
               <div className="text-[16px] font-bold text-on">未登录</div>
-              <div className="text-[11px] text-mut mt-0.5">登录后可同步点赞、收藏与评论</div>
-              <div className="flex gap-3 mt-2 text-[10.5px] text-mut">
-                <span>收藏 <b className="text-on">{favs.length}</b></span>
-                <span>观看 <b className="text-on">{history.length}</b></span>
+              <div className="text-[11px] text-mut mt-0.5">登录后可同步追剧历史与收藏夹</div>
+              <div className="flex gap-4 mt-2 text-[11px] text-mut">
+                <span>追剧收藏 <b className="text-on">{favs.length}</b></span>
+                <span>观看历史 <b className="text-on">{history.length}</b></span>
               </div>
             </div>
             <span className="flex items-center gap-0.5 h-8 pl-3 pr-2 rounded-full bg-primary text-on-primary text-[11.5px] font-semibold">

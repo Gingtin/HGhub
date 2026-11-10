@@ -13,36 +13,133 @@ export function EpisodesPanel({ videoId, episodes, current, onPick, onClose, bar
   bare?: boolean;
 }) {
   const [asc, setAsc] = useState(true);
-  const list = asc ? episodes : [...episodes].reverse();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const activeBtnRef = useRef<HTMLButtonElement>(null);
+
+  const list = useMemo(() => (asc ? episodes : [...episodes].reverse()), [asc, episodes]);
+
+  // 分组区间（超过 30 集时显示分段快捷标签，如 1-30, 31-60 等）
+  const chunkSize = 30;
+  const chunks = useMemo(() => {
+    if (episodes.length <= 30) return [];
+    const res: { label: string; startEp: number }[] = [];
+    for (let i = 0; i < episodes.length; i += chunkSize) {
+      const start = i + 1;
+      const end = Math.min(i + chunkSize, episodes.length);
+      res.push({ label: `${start}-${end}`, startEp: asc ? start : end });
+    }
+    return res;
+  }, [episodes.length, asc]);
+
+  // 自动将当前播放集数居中对齐
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (activeBtnRef.current) {
+        activeBtnRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [current]);
+
+  const jumpToEp = (epNum: number) => {
+    const el = document.getElementById(`ep-btn-${epNum}`);
+    if (el) {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-s1/95">
       {bare ? (
-        <div className="shrink-0 flex items-center gap-2 px-4 pb-2">
-          <span className="text-[10.5px] text-mut">共 {episodes.length} 集</span>
-          <button onClick={() => setAsc((v) => !v)} className="ml-auto text-[11px] text-primary pressable">{asc ? "倒序" : "正序"}</button>
-        </div>
-      ) : (
-        <div className="shrink-0 flex items-center gap-2 px-4 h-12">
-          <span className="text-[13.5px] font-bold text-on">选集</span>
-          <span className="text-[10.5px] text-mut">共 {episodes.length} 集</span>
-          <button onClick={() => setAsc((v) => !v)} className="ml-auto text-[11px] text-primary pressable">{asc ? "倒序" : "正序"}</button>
-          <button onClick={onClose} aria-label="关闭" className="w-7 h-7 rounded-full bg-s3 flex items-center justify-center text-mut pressable">
-            <IClose size={13} />
+        <div className="shrink-0 flex items-center justify-between px-4 pb-2">
+          <span className="text-[11px] text-mut font-medium">共 {episodes.length} 集 · 正在播第 {current} 集</span>
+          <button
+            onClick={() => setAsc((v) => !v)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-s3 text-[11px] text-primary font-semibold pressable"
+          >
+            <span>↕</span> {asc ? "正序" : "倒序"}
           </button>
         </div>
-      )}
-      <div className="flex-1 scroll-y px-4 pb-4">
-        <div className="grid grid-cols-4 gap-2">
-          {list.map((e) => (
-            <button key={e.ep_num} onClick={() => onPick(e.ep_num)}
-              className={`h-10 rounded-(--r-sm) text-[12px] font-semibold pressable ${e.ep_num === current ? "bg-primary text-on-primary" : "bg-s3 text-on/80"}`}>
-              {e.ep_num}
+      ) : (
+        <div className="shrink-0 flex items-center justify-between px-4 h-13 border-b border-white/5">
+          <div className="flex items-center gap-2">
+            <span className="text-[15px] font-bold text-on tracking-wide">选集</span>
+            <span className="px-2 py-0.5 rounded-full bg-s3 text-[11px] text-mut font-medium">共 {episodes.length} 集</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setAsc((v) => !v)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-s3 text-[11px] text-primary font-semibold pressable"
+            >
+              <span>↕</span> {asc ? "正序" : "倒序"}
             </button>
-          ))}
+            <button onClick={onClose} aria-label="关闭" className="w-7 h-7 rounded-full bg-s3 flex items-center justify-center text-mut pressable">
+              <IClose size={13} />
+            </button>
+          </div>
         </div>
-        {!episodes.length && <div className="text-center text-[11.5px] text-dim py-8">暂无剧集</div>}
+      )}
+
+      {/* 分段区间横滑标签（>30 集时呈现） */}
+      {chunks.length > 0 && (
+        <div className="shrink-0 flex items-center gap-1.5 px-4 py-2 overflow-x-auto no-scrollbar border-b border-white/5">
+          {chunks.map((c) => {
+            const isChunkActive = Math.ceil(current / chunkSize) === Math.ceil(c.startEp / chunkSize);
+            return (
+              <button
+                key={c.label}
+                onClick={() => jumpToEp(c.startEp)}
+                className={`shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                  isChunkActive ? "bg-primary/20 text-primary border border-primary/30" : "bg-s3 text-mut hover:text-on"
+                }`}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div ref={scrollContainerRef} className="flex-1 scroll-y px-4 py-3">
+        <div className="grid grid-cols-5 gap-2 sm:gap-2.5">
+          {list.map((e) => {
+            const isCur = e.ep_num === current;
+            return (
+              <button
+                key={e.ep_num}
+                id={`ep-btn-${e.ep_num}`}
+                ref={isCur ? activeBtnRef : undefined}
+                onClick={() => onPick(e.ep_num)}
+                className={`h-11 rounded-xl text-[13px] font-semibold flex items-center justify-center transition-all pressable ${
+                  isCur
+                    ? "brand-grad text-white shadow-md shadow-primary/30 ring-1 ring-white/40 scale-[1.02]"
+                    : "bg-s3/90 hover:bg-s4 text-on/85 ring-1 ring-white/5"
+                }`}
+              >
+                <span className="tabular-nums">{e.ep_num}</span>
+                {isCur && (
+                  <span className="flex items-end gap-[2px] h-3 ml-1.5 shrink-0">
+                    <span className="w-[2px] h-full bg-white rounded-full animate-[pulse_0.6s_ease-in-out_infinite]" />
+                    <span className="w-[2px] h-2/3 bg-white rounded-full animate-[pulse_0.8s_ease-in-out_infinite_150ms]" />
+                    <span className="w-[2px] h-4/5 bg-white rounded-full animate-[pulse_0.7s_ease-in-out_infinite_300ms]" />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {!episodes.length && <div className="text-center text-[12px] text-dim py-12">暂无剧集数据</div>}
       </div>
-      {!bare && <div className="shrink-0 px-4 py-2.5 text-[10.5px] text-dim bg-s2/60">剧集 ID {videoId} · 点选即切换播放</div>}
+
+      {!bare && (
+        <div className="shrink-0 px-4 py-2.5 text-[11px] text-mut bg-s2/80 border-t border-white/5 flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>当前播放第 <b className="text-on">{current}</b> 集</span>
+          </span>
+          <span className="text-[10.5px] text-dim">点选任意集数即刻切换</span>
+        </div>
+      )}
     </div>
   );
 }
