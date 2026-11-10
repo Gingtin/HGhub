@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useReducer, useRef, useState } from "react";
 import Hls from "hls.js";
 import { fmtTime, platform, playlist } from "../api";
 import { mediaResource, observeHls, usePlayerDiagnostics } from "../playbackDiagnostics";
@@ -6,6 +6,7 @@ import { usePlaybackActivity } from "../usePlaybackActivity";
 import { useSeekInput } from "../useSeekInput";
 import PlaybackLock from "./PlaybackLock";
 import { ICompress, IExpand, ILockF, IPauseF, IPlayF, IVol, IVolMute } from "../icons";
+import { INITIAL_MACHINE_STATE, playerStateReducer } from "../playerStateMachine";
 
 type Props = {
   src: string;              // 原始 m3u8 地址
@@ -33,13 +34,14 @@ export default function Player({
   const recoverCountRef = useRef(0);
   const { trace, requestSeek } = usePlayerDiagnostics(videoRef, hlsRef, { view: "post_detail", ...diagnosticContext, active, resource: mediaResource(src) });
   const activity = usePlaybackActivity(videoRef, hlsRef, { active, autoPlay: !!autoPlay, src, trace });
-  const [playing, setPlaying] = useState(false);
-  const [waiting, setWaiting] = useState(false);
+  const [machine, dispatchMachine] = useReducer(playerStateReducer, INITIAL_MACHINE_STATE);
+  const playing = machine.status === "playing";
+  const waiting = machine.status === "loading" || machine.status === "buffering";
+  const errMsg = machine.status === "error" ? (machine.error || "播放异常") : "";
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [full, setFull] = useState(false);
   const [rate, setRate] = useState(1);
-  const [errMsg, setErrMsg] = useState<string>("");
   const [controlsLocked, setControlsLocked] = useState(false);
   const seek = useSeekInput({ time, duration, enabled: active && !controlsLocked, resetKey: src,
     onInteraction: (phase, input, target, pointerTarget) => trace(`seek.input.${phase}`, { input, target, pointer_target: pointerTarget }),
@@ -47,7 +49,7 @@ export default function Player({
       const video = videoRef.current;
       if (!video || !activity.isActive()) return;
       requestSeek(target, `legacy_${input}`);
-      setWaiting(true);
+      dispatchMachine({ type: "SEEKING", target });
       if (hlsRef.current) {
         try { hlsRef.current.startLoad(target); } catch { /* ignore */ }
       }
@@ -62,7 +64,7 @@ export default function Player({
     if (!video || !src) return;
     const url = playlist(src);
     recoverCountRef.current = 0;
-    setErrMsg("");
+    dispatchMachine({ type: "LOAD_START" });
     trace("source.load", { engine: Hls.isSupported() ? "hls.js" : "native", auto_play: autoPlay });
 
     if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
@@ -100,7 +102,6 @@ export default function Player({
       });
       hls.on(Hls.Events.FRAG_BUFFERED, () => {
         recoverCountRef.current = 0;
-        setErrMsg("");
       });
       hls.on(Hls.Events.ERROR, (_e, data) => {
         if (!data.fatal) {
@@ -125,7 +126,7 @@ export default function Player({
         }
         const detail = `${data.type}/${data.details}/${data.response?.code ?? ""}/${String(data.reason ?? "").slice(0, 80)}`;
         (window as unknown as { __hlsErr?: string }).__hlsErr = detail;
-        setErrMsg(detail);
+        dispatchMachine({ type: "ERROR", error: detail });
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
         else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
         else { hls.destroy(); hlsRef.current = null; }
@@ -138,6 +139,7 @@ export default function Player({
 
     return () => {
       trace("source.cleanup");
+      dispatchMachine({ type: "RESET" });
       if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
     };
   }, [src, autoPlay]);
@@ -192,11 +194,11 @@ export default function Player({
         loop={loop}
         className="w-full h-full object-contain bg-black"
         onClick={toggle}
-        onPlay={() => { if (activity.isActive()) { setPlaying(true); onTogglePlay?.(true); } }}
-        onPause={() => { setPlaying(false); onTogglePlay?.(false); }}
-        onWaiting={() => setWaiting(true)}
-        onPlaying={() => { if (activity.isActive()) { setWaiting(false); setErrMsg(""); onPlaying?.(); } }}
-        onSeeked={() => setWaiting(false)}
+        onPlay={() => { if (activity.isActive()) { onTogglePlay?.(true); } }}
+        onPause={() => { dispatchMachine({ type: "PAUSE" }); onTogglePlay?.(false); }}
+        onWaiting={() => dispatchMachine({ type: "WAITING" })}
+        onPlaying={() => { if (activity.isActive()) { dispatchMachine({ type: "PLAYING" }); onPlaying?.(); } }}
+        onSeeked={() => dispatchMachine({ type: "SEEKED" })}
         onTimeUpdate={(e) => setTime((e.target as HTMLVideoElement).currentTime)}
         onLoadedMetadata={(e) => setDuration((e.target as HTMLVideoElement).duration || 0)}
         onEnded={() => { if (activity.isActive()) onEnded?.(); }}

@@ -29,6 +29,9 @@ importers:
       tailwind-merge:
         specifier: 3.4.0
         version: 3.4.0
+      zustand:
+        specifier: ^5.1.0
+        version: 5.1.0(@types/react@19.2.7)(react@19.2.6)
     devDependencies:
       '@tailwindcss/vite':
         specifier: 4.1.17
@@ -983,6 +986,24 @@ packages:
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
 
+  zustand@5.1.0:
+    resolution: {integrity: sha512-ciJZlP48M1PTQbVQq81CGVFxHTLpZNrFjKqwjtCU34AWuXTZT/jrF3p9+fI84Cf1eSCMLapxqBy/SNTfwOBuqA==}
+    engines: {node: '>=12.20.0'}
+    peerDependencies:
+      '@types/react': '>=18.0.0'
+      immer: '>=9.0.6'
+      react: '>=18.0.0'
+      use-sync-external-store: '>=1.2.0'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      immer:
+        optional: true
+      react:
+        optional: true
+      use-sync-external-store:
+        optional: true
+
 snapshots:
 
   '@babel/code-frame@7.29.7':
@@ -1690,3 +1711,8 @@ snapshots:
       lightningcss: 1.30.2
 
   yallist@3.1.1: {}
+
+  zustand@5.1.0(@types/react@19.2.7)(react@19.2.6):
+    optionalDependencies:
+      '@types/react': 19.2.7
+      react: 19.2.6

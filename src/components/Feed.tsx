@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { api, cover, fmt, fmtTime, isMobile } from "../api";
 import type { Detail, Episode, Post, VideoCard } from "../types";
@@ -9,6 +9,7 @@ import PlayerControls from "./PlayerControls";
 import { MobileFeedMiniBar, MobileFullscreenControls } from "./MobileProgress";
 import PlaybackLock from "./PlaybackLock";
 import { playbackProgressStore } from "../playbackStore";
+import { INITIAL_MACHINE_STATE, playerStateReducer } from "../playerStateMachine";
 import { ArticlePanel, CommentsPanel, EpisodesPanel } from "./Panels";
 import { setBackHandler } from "../back";
 import {
@@ -48,11 +49,12 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const timeRef = useRef(0);
   const [duration, setDuration] = useState(0);
   const [vsize, setVsize] = useState({ w: 0, h: 0 });
-  const [paused, setPaused] = useState(false);
+  const [machine, dispatchMachine] = useReducer(playerStateReducer, INITIAL_MACHINE_STATE);
+  const paused = machine.status === "paused";
+  const waiting = machine.status === "loading" || machine.status === "buffering";
+  const err = machine.status === "error" ? (machine.error || "播放异常") : "";
   const [controlsLocked, setControlsLocked] = useState(false);
   const [rate, setRate] = useState(1);
-  const [waiting, setWaiting] = useState(false);
-  const [err, setErr] = useState("");
   /* 取播放地址失败后手动重试：递增即重新触发拉取 */
   const [playTry, setPlayTry] = useState(0);
   const [panel, setPanel] = useState<"episodes" | "comments" | "article" | "detail" | null>(null);
@@ -371,7 +373,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         setPlayUrls((m) => ({ ...m, [playKey]: info.video_url }));
         addHistory(curId, curEp);
       })
-      .catch((e) => { if (alive) setErr((e as Error).message || "取播放地址失败"); });
+      .catch((e) => { if (alive) dispatchMachine({ type: "ERROR", error: (e as Error).message || "取播放地址失败" }); });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [curId, curEp, playTry]);
@@ -381,9 +383,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     timeRef.current = 0;
     playbackProgressStore.reset();
     setDuration(0);
-    setErr("");
-    setWaiting(true);
-    setPaused(false);
+    dispatchMachine({ type: "LOAD_START" });
     setDescOpen(false);
     setVsize({ w: 0, h: 0 });
     setPortraitFit("contain");
@@ -628,7 +628,6 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       setScrub(null);
       scrubTarget.current = null;
       if (!cancelled && target != null) {
-        setErr("");
         timeRef.current = target;
         playbackProgressStore.setTime(target);
         videoRef.current?.seek(target, "mobile_gesture");
@@ -795,11 +794,11 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                       onTime={onTimeTick}
                       onDuration={onDurationTick}
                       onSize={(w, h) => setVsize({ w, h })}
-                      onPlaying={() => { setPaused(false); setWaiting(false); setErr(""); }}
-                      onPause={() => setPaused(true)}
-                      onWaiting={() => setWaiting(true)}
+                      onPlaying={() => dispatchMachine({ type: "PLAYING" })}
+                      onPause={() => dispatchMachine({ type: "PAUSE" })}
+                      onWaiting={() => dispatchMachine({ type: "WAITING" })}
                       onEnded={() => { const next = episodes.find((e) => e.ep_num === curEp + 1); if (next) pickEp(next.ep_num); }}
-                      onError={(m) => setErr(m)}
+                      onError={(m) => dispatchMachine({ type: "ERROR", error: m })}
                     />
                   </div>
 
@@ -832,7 +831,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                         <span>视频暂时无法加载</span>
                         <span className="text-[10.5px] hg-ink-4 max-w-[240px] text-center break-all">{err}</span>
                         <button className="px-4 py-1.5 rounded-full hg-chip-strong hg-link text-[12.5px] font-semibold pressable"
-                          onClick={() => { setErr(""); setWaiting(true); videoRef.current?.reload(); }}>
+                          onClick={() => { dispatchMachine({ type: "RETRY" }); videoRef.current?.reload(); }}>
                           重新加载
                         </button>
                       </div>
@@ -895,7 +894,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                         setRate={setRate}
                         onTogglePlay={() => videoRef.current?.toggle()}
                         onSeek={(target) => {
-                          setErr("");
+                          dispatchMachine({ type: "SEEKING", target });
                           timeRef.current = target;
                           playbackProgressStore.setTime(target);
                           videoRef.current?.seek(target, "mobile_bar");
@@ -919,7 +918,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                     <span>视频暂时无法加载</span>
                     <span className="text-[10.5px] hg-ink-4 max-w-[240px] text-center break-all">{err}</span>
                     <button className="px-4 py-1.5 rounded-full hg-chip-strong hg-link text-[12.5px] font-semibold pressable"
-                      onClick={() => { setErr(""); setWaiting(true); setPlayTry((n) => n + 1); }}>
+                      onClick={() => { dispatchMachine({ type: "RETRY" }); setPlayTry((n) => n + 1); }}>
                       重新加载
                     </button>
                   </div>
@@ -1117,7 +1116,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                         duration={duration}
                         rotated={rotated}
                         onSeek={(target) => {
-                          setErr("");
+                          dispatchMachine({ type: "SEEKING", target });
                           timeRef.current = target;
                           playbackProgressStore.setTime(target);
                           videoRef.current?.seek(target, "mobile_bar");

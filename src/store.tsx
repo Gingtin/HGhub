@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect } from "react";
+import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { api, platform as envPlatform } from "./api";
 import { isStrictSecurity, setStrictSecurity as setHtmlStrictSecurity } from "./html";
@@ -82,11 +83,19 @@ function loadPersist(): Persist {
     const raw = localStorage.getItem(LS);
     if (!raw) return DEFAULTS;
     const p = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Persist>) };
-    // 只在启动时应用；本次使用中取消静音不会关闭此偏好。
     const muteOnStartup = p.muteOnStartup !== false;
     return { ...p, muteOnStartup, muted: muteOnStartup || p.muted === true, history: normalizeHistory(p.history) };
   } catch {
     return DEFAULTS;
+  }
+}
+
+function savePersist(p: Partial<Persist>) {
+  try {
+    const current = loadPersist();
+    localStorage.setItem(LS, JSON.stringify({ ...current, ...p }));
+  } catch {
+    /* ignore */
   }
 }
 
@@ -103,7 +112,7 @@ function applyTheme(theme: Theme) {
   document.documentElement.style.colorScheme = theme;
 }
 
-type Store = {
+export type Store = {
   platform: Platform;
   theme: Theme; setTheme: (t: Theme) => void;
   tab: Tab; setTab: (t: Tab) => void;
@@ -131,105 +140,88 @@ type Store = {
   toasts: Toast[]; toast: (msg: string, icon?: Toast["icon"]) => void;
 };
 
-const Ctx = createContext<Store>(null as unknown as Store);
-export const useStore = () => useContext(Ctx);
+import type { StoreApi } from "zustand";
+
+type StoreHook = {
+  <U>(selector: (state: Store) => U): U;
+  (): Store;
+  getState: () => Store;
+  setState: StoreApi<Store>["setState"];
+  subscribe: StoreApi<Store>["subscribe"];
+  getInitialState: () => Store;
+};
+
 let seq = 0;
+let toastSeq = 0;
+const initialPersist = loadPersist();
 
-export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [p, setP] = useState<Persist>(loadPersist);
-  const [theme, setThemeState] = useState<Theme>(readTheme);
-  const [tab, setTabRaw] = useState<Tab>("home");
-  const [stack, setStack] = useState<Page[]>([]);
-  const [user, setUser] = useState<User | null>(null);
-  const [loginOpen, setLoginOpen] = useState(false);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const [theater, setTheaterState] = useState(false);
-  const [fs, setFsState] = useState(false);
-  const [clean, setCleanState] = useState(false);
-  const [strictSecurity, setStrictSecurityState] = useState<boolean>(isStrictSecurity);
-  const [cliRelaxed, setCliRelaxed] = useState(false);
-  const [strictSecurityReady, setStrictSecurityReady] = useState(false);
-  const [securityPending, setSecurityPending] = useState(false);
-  const toastSeq = useRef(0);
-
-  useEffect(() => {
+export const useStore: StoreHook = create<Store>((set, get) => ({
+  platform: envPlatform,
+  theme: readTheme(),
+  setTheme: (theme: Theme) => {
     applyTheme(theme);
     try { localStorage.setItem("hghub_theme", theme); } catch { /* ignore */ }
-  }, [theme]);
-
-  useEffect(() => {
-    try { localStorage.setItem(LS, JSON.stringify(p)); } catch { /* ignore */ }
-  }, [p]);
-
-  useEffect(() => {
-    api.boot()
-      .then((r) => {
-        if (r.user && (r.user as User).id) setUser(r.user as User);
-        if (typeof r.strict_security === "boolean") {
-          setStrictSecurityState(r.strict_security);
-          setHtmlStrictSecurity(r.strict_security);
-          setStrictSecurityReady(true);
-        }
-        setCliRelaxed(!!r.cli_relaxed);
-      })
-      .catch(() => { /* 离线也能用 */ });
-  }, []);
-
-  const setStrictSecurity = useCallback(async (on: boolean) => {
-    if (!strictSecurityReady) throw new Error("安全设置尚未读取，请重新启动应用");
-    setSecurityPending(true);
-    try {
-      const saved = await api.securitySet(on);
-      setHtmlStrictSecurity(saved);
-      setStrictSecurityState(saved);
-    } finally {
-      setSecurityPending(false);
-    }
-  }, [strictSecurityReady]);
-
-  const toast = useCallback((msg: string, icon?: Toast["icon"]) => {
-    const id = ++toastSeq.current;
-    setToasts((t) => [...t.slice(-2), { id, msg, icon }]);
-    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2200);
-  }, []);
-
-  const setTab = useCallback((t: Tab) => { setTabRaw(t); setStack([]); setCleanState(false); }, []);
-  const push = useCallback((pg: PageInput) => {
-    setCleanState(false);
-    setStack((s) => [...s, { ...pg, key: `p${++seq}` } as Page]);
-  }, []);
-  const pop = useCallback(() => {
-    setCleanState(false);
-    setStack((s) => s.slice(0, -1));
-  }, []);
-
-  const toggleLikeLocal = useCallback((id: number) => {
+    set({ theme });
+  },
+  tab: "home",
+  setTab: (tab: Tab) => set({ tab, stack: [], clean: false }),
+  stack: [],
+  push: (pg: PageInput) => set((s) => ({
+    clean: false,
+    stack: [...s.stack, { ...pg, key: `p${++seq}` } as Page],
+  })),
+  pop: () => set((s) => ({
+    clean: false,
+    stack: s.stack.slice(0, -1),
+  })),
+  user: null,
+  setUser: (user: User | null) => set({ user }),
+  loginOpen: false,
+  setLoginOpen: (loginOpen: boolean) => set({ loginOpen }),
+  logout: async () => {
+    try { await api.logout(); } catch { /* ignore */ }
+    get().setUser(null);
+    get().toast("已退出登录", "info");
+  },
+  likes: initialPersist.likes,
+  favs: initialPersist.favs,
+  history: initialPersist.history,
+  follows: initialPersist.follows,
+  isLiked: (id: number) => get().likes.includes(id),
+  isFav: (id: number) => get().favs.includes(id),
+  toggleLikeLocal: (id: number) => {
     let on = false;
-    setP((s) => {
+    set((s) => {
       on = !s.likes.includes(id);
-      return { ...s, likes: on ? [id, ...s.likes] : s.likes.filter((x) => x !== id) };
+      const likes = on ? [id, ...s.likes] : s.likes.filter((x) => x !== id);
+      savePersist({ likes });
+      return { likes };
     });
     return on;
-  }, []);
-  const toggleFavLocal = useCallback((id: number) => {
+  },
+  toggleFavLocal: (id: number) => {
     let on = false;
-    setP((s) => {
+    set((s) => {
       on = !s.favs.includes(id);
-      return { ...s, favs: on ? [id, ...s.favs] : s.favs.filter((x) => x !== id) };
+      const favs = on ? [id, ...s.favs] : s.favs.filter((x) => x !== id);
+      savePersist({ favs });
+      return { favs };
     });
     return on;
-  }, []);
-  const toggleFollowLocal = useCallback((uid: number) => {
+  },
+  toggleFollowLocal: (uid: number) => {
     let on = false;
-    setP((s) => {
+    set((s) => {
       on = !s.follows.includes(uid);
-      return { ...s, follows: on ? [uid, ...s.follows] : s.follows.filter((x) => x !== uid) };
+      const follows = on ? [uid, ...s.follows] : s.follows.filter((x) => x !== uid);
+      savePersist({ follows });
+      return { follows };
     });
     return on;
-  }, []);
-  const addHistory = useCallback((id: number, ep?: number, t?: number, dur?: number) => {
+  },
+  addHistory: (id: number, ep?: number, t?: number, dur?: number) => {
     if (!id) return;
-    setP((s) => {
+    set((s) => {
       const prev = s.history.find((x) => x.id === id);
       const epChanged = ep !== undefined && prev !== undefined && prev.ep !== ep;
       const entry: WatchProgress = {
@@ -239,72 +231,103 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         dur: dur ?? prev?.dur ?? 0,
         at: Date.now(),
       };
-      return { ...s, history: [entry, ...s.history.filter((x) => x.id !== id)].slice(0, 80) };
+      const history = [entry, ...s.history.filter((x) => x.id !== id)].slice(0, 80);
+      savePersist({ history });
+      return { history };
     });
-  }, []);
-  const clearHistory = useCallback(() => setP((s) => ({ ...s, history: [] })), []);
-  const addSearch = useCallback((q: string) => {
+  },
+  clearHistory: () => {
+    savePersist({ history: [] });
+    set({ history: [] });
+  },
+  theater: false,
+  setTheater: (v) => set((s) => ({ theater: typeof v === "function" ? v(s.theater) : v })),
+  fs: false,
+  setFs: (v) => set((s) => {
+    const next = typeof v === "function" ? v(s.fs) : v;
+    if (!next) {
+      invoke("set_orientation", { landscape: false }).catch(() => {});
+      try { screen.orientation?.unlock?.(); } catch { /* ignore */ }
+    }
+    return { fs: next };
+  }),
+  clean: false,
+  setClean: (v) => set((s) => ({ clean: typeof v === "function" ? v(s.clean) : v })),
+  muted: initialPersist.muted,
+  setMuted: (v) => set((s) => {
+    const muted = typeof v === "function" ? v(s.muted) : v;
+    savePersist({ muted });
+    return { muted };
+  }),
+  muteOnStartup: initialPersist.muteOnStartup,
+  setMuteOnStartup: (muteOnStartup) => {
+    savePersist({ muteOnStartup });
+    set({ muteOnStartup });
+  },
+  volume: initialPersist.volume,
+  setVolume: (v) => {
+    const volume = Math.max(0, Math.min(1, v));
+    const muted = volume === 0;
+    savePersist({ volume, muted });
+    set({ volume, muted });
+  },
+  searchHist: initialPersist.searchHist,
+  addSearch: (q) => {
     const t = q.trim();
     if (!t) return;
-    setP((s) => ({ ...s, searchHist: [t, ...s.searchHist.filter((x) => x !== t)].slice(0, 12) }));
-  }, []);
-  const clearSearchHist = useCallback(() => setP((s) => ({ ...s, searchHist: [] })), []);
-
-  const logout = useCallback(async () => {
-    try { await api.logout(); } catch { /* ignore */ }
-    setUser(null);
-    toast("已退出登录", "info");
-  }, [toast]);
-
-  const setTheater = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
-    setTheaterState((prev) => (typeof v === "function" ? (v as (p: boolean) => boolean)(prev) : v));
-  }, []);
-
-  const setFs = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
-    setFsState((prev) => {
-      const next = typeof v === "function" ? (v as (p: boolean) => boolean)(prev) : v;
-      if (!next) {
-        invoke("set_orientation", { landscape: false }).catch(() => {});
-        try { screen.orientation?.unlock?.(); } catch { /* ignore */ }
-      }
-      return next;
+    set((s) => {
+      const searchHist = [t, ...s.searchHist.filter((x) => x !== t)].slice(0, 12);
+      savePersist({ searchHist });
+      return { searchHist };
     });
+  },
+  clearSearchHist: () => {
+    savePersist({ searchHist: [] });
+    set({ searchHist: [] });
+  },
+  strictSecurity: isStrictSecurity(),
+  strictSecurityReady: false,
+  securityPending: false,
+  cliRelaxed: false,
+  setStrictSecurity: async (on: boolean) => {
+    if (!get().strictSecurityReady) throw new Error("安全设置尚未读取，请重新启动应用");
+    set({ securityPending: true });
+    try {
+      const saved = await api.securitySet(on);
+      setHtmlStrictSecurity(saved);
+      set({ strictSecurity: saved });
+    } finally {
+      set({ securityPending: false });
+    }
+  },
+  toasts: [],
+  toast: (msg: string, icon?: Toast["icon"]) => {
+    const id = ++toastSeq;
+    set((s) => ({ toasts: [...s.toasts.slice(-2), { id, msg, icon }] }));
+    window.setTimeout(() => {
+      set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) }));
+    }, 2200);
+  },
+})) as unknown as StoreHook;
+
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    applyTheme(useStore.getState().theme);
+    api.boot()
+      .then((r) => {
+        const store = useStore.getState();
+        if (r.user && (r.user as User).id) store.setUser(r.user as User);
+        if (typeof r.strict_security === "boolean") {
+          setHtmlStrictSecurity(r.strict_security);
+          useStore.setState({
+            strictSecurity: r.strict_security,
+            strictSecurityReady: true,
+          });
+        }
+        useStore.setState({ cliRelaxed: !!r.cli_relaxed });
+      })
+      .catch(() => { /* 离线也能用 */ });
   }, []);
 
-  const setClean = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
-    setCleanState((prev) => (typeof v === "function" ? (v as (p: boolean) => boolean)(prev) : v));
-  }, []);
-
-  const setMuted = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
-    setP((s) => ({ ...s, muted: typeof v === "function" ? v(s.muted) : v }));
-  }, []);
-  const setMuteOnStartup = useCallback((on: boolean) => {
-    setP((s) => ({ ...s, muteOnStartup: on }));
-  }, []);
-  const setVolume = useCallback((v: number) => {
-    const volume = Math.max(0, Math.min(1, v));
-    setP((s) => ({ ...s, volume, muted: volume === 0 }));
-  }, []);
-
-  const value = useMemo<Store>(() => ({
-    platform: envPlatform,
-    theme, setTheme: setThemeState,
-    tab, setTab, stack, push, pop,
-    user, setUser, loginOpen, setLoginOpen, logout,
-    likes: p.likes, favs: p.favs, history: p.history, follows: p.follows,
-    isLiked: (id) => p.likes.includes(id),
-    isFav: (id) => p.favs.includes(id),
-    toggleLikeLocal, toggleFavLocal, toggleFollowLocal, addHistory, clearHistory,
-    muted: p.muted, setMuted, volume: p.volume, setVolume,
-    theater, setTheater, fs, setFs, clean, setClean,
-    muteOnStartup: p.muteOnStartup, setMuteOnStartup,
-    searchHist: p.searchHist, addSearch, clearSearchHist,
-    strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
-    toasts, toast,
-  }), [theme, tab, setTab, stack, push, pop, user, loginOpen, logout,
-    p, toggleLikeLocal, toggleFavLocal, toggleFollowLocal, addHistory, clearHistory,
-    setMuted, setMuteOnStartup, setVolume, addSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
-    toasts, toast, theater, setTheater, fs, setFs, clean, setClean]);
-
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <>{children}</>;
 }
