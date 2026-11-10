@@ -8,6 +8,7 @@ import type { User } from "./types";
 export type Platform = "android" | "ios" | "windows" | "macos" | "linux";
 export type Theme = "dark" | "light";
 export type Tab = "home" | "search" | "category" | "profile";
+export type HomeMode = "hall" | "feed";
 
 /** 播放页上下文：ids 是来源列表，index 是当前条目。 */
 export type FeedContext = {
@@ -53,12 +54,14 @@ type Persist = {
   muteOnStartup: boolean;
   volume: number;
   searchHist: string[];
+  homeMode?: HomeMode;
 };
 
 const LS = "hghub_app_v1";
 const DEFAULTS: Persist = {
   likes: [], favs: [], history: [], follows: [],
   muted: true, muteOnStartup: true, volume: 0.7, searchHist: [],
+  homeMode: "hall",
 };
 
 /** 旧版本 history 是 number[]，读出来时升级成带进度的结构 */
@@ -84,7 +87,8 @@ function loadPersist(): Persist {
     if (!raw) return DEFAULTS;
     const p = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Persist>) };
     const muteOnStartup = p.muteOnStartup !== false;
-    return { ...p, muteOnStartup, muted: muteOnStartup || p.muted === true, history: normalizeHistory(p.history) };
+    const homeMode = (p.homeMode === "feed" ? "feed" : "hall") as HomeMode;
+    return { ...p, muteOnStartup, muted: muteOnStartup || p.muted === true, history: normalizeHistory(p.history), homeMode };
   } catch {
     return DEFAULTS;
   }
@@ -134,6 +138,7 @@ export type Store = {
   clean: boolean; setClean: (v: boolean | ((p: boolean) => boolean)) => void;
   muted: boolean; setMuted: (v: boolean | ((p: boolean) => boolean)) => void;
   muteOnStartup: boolean; setMuteOnStartup: (on: boolean) => void;
+  homeMode: HomeMode; setHomeMode: (mode: HomeMode) => void;
   volume: number; setVolume: (v: number) => void;
   searchHist: string[]; addSearch: (q: string) => void; clearSearchHist: () => void;
   strictSecurity: boolean; strictSecurityReady: boolean; securityPending: boolean; cliRelaxed: boolean; setStrictSecurity: (on: boolean) => Promise<void>;
@@ -263,6 +268,11 @@ export const useStore: StoreHook = create<Store>((set, get) => ({
   setMuteOnStartup: (muteOnStartup) => {
     savePersist({ muteOnStartup });
     set({ muteOnStartup });
+  },
+  homeMode: initialPersist.homeMode || "hall",
+  setHomeMode: (homeMode: HomeMode) => {
+    savePersist({ homeMode });
+    set({ homeMode });
   },
   volume: initialPersist.volume,
   setVolume: (v) => {

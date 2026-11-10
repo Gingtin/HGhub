@@ -4,12 +4,12 @@ import { useStore } from "../store";
 import { Modal, Toggle } from "../components/ui";
 import LinePicker from "../components/LinePicker";
 import { copyPlaybackLog, initPlaybackLog, setPlaybackLog, usePlaybackLog } from "../playbackDiagnostics";
-import { IBack, IBoltF, IBroom, IChevR, IHeart, IInfo, ILink, ILockF, IMoon, IRefresh, ISettings, ISun, IVolMute } from "../icons";
+import { IBack, IBoltF, IBroom, IChevR, IGrid, IHeart, IInfo, ILink, ILockF, IMoon, IRefresh, ISettings, ISun, IVolMute } from "../icons";
 
 /* 独立设置页：线路 / 外观 / 播放 / 本地数据 / 清理缓存 / 网络诊断 / 关于
    入口：Windows 侧栏「设置」、Android「我的」右上角齿轮 */
 export default function Settings({ onBack, wide }: { onBack: () => void; wide: boolean }) {
-  const { theme, setTheme, favs, history, muteOnStartup, setMuteOnStartup, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity, toast } = useStore();
+  const { theme, setTheme, favs, history, muteOnStartup, setMuteOnStartup, homeMode, setHomeMode, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity, toast } = useStore();
   const [about, setAbout] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -77,7 +77,33 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
             </div>
           </Section>
 
-          <Section title="播放">
+          <Section title="首页与播放">
+            <div className="flex items-center gap-3 px-3.5 py-3">
+              <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IGrid size={16} /></span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12.5px] text-on font-medium">首页展示模式</div>
+                <div className="text-[10.5px] text-mut mt-0.5">
+                  {homeMode === "hall" ? "海报大厅（精选选剧，看中再播不打扰）" : "沉浸刷剧（类似抖音，进入即开播）"}
+                </div>
+              </div>
+              <div className="flex bg-s3 rounded-xl p-0.5 border border-white/5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => { setHomeMode("hall"); toast("已切换为海报大厅模式", "ok"); }}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${homeMode === "hall" ? "bg-primary text-on-primary shadow-xs" : "text-mut hover:text-on"}`}
+                >
+                  海报大厅
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setHomeMode("feed"); toast("已切换为沉浸刷剧模式", "ok"); }}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${homeMode === "feed" ? "bg-primary text-on-primary shadow-xs" : "text-mut hover:text-on"}`}
+                >
+                  沉浸刷剧
+                </button>
+              </div>
+            </div>
+
             <div className="flex items-center gap-3 px-3.5 py-3">
               <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IVolMute size={16} /></span>
               <div className="flex-1 min-w-0">

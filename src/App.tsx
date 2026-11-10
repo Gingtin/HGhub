@@ -30,7 +30,7 @@ const PageFallback = () => (
 
 /* ============ 底部标签栏（Android / Mobile）—— 现代毛玻璃悬浮质感 + 图标文字 ============ */
 function TabBar() {
-  const { tab, setTab, theme } = useStore();
+  const { tab, setTab, theme, homeMode } = useStore();
   const items: { k: Tab; label: string; icon: (on: boolean) => React.ReactNode }[] = [
     { k: "home", label: "首页", icon: (on) => on ? <IHomeF size={21} /> : <IHome size={21} strokeWidth={2} /> },
     { k: "search", label: "搜索", icon: (on) => <ISearch size={20} strokeWidth={on ? 2.4 : 1.9} /> },
@@ -38,7 +38,7 @@ function TabBar() {
     { k: "profile", label: "我的", icon: (on) => on ? <IUserF size={21} /> : <IUser size={21} strokeWidth={1.9} /> },
   ];
 
-  const overVideo = tab === "home";
+  const overVideo = tab === "home" && homeMode === "feed";
   const lightBar = !overVideo && theme === "light";
 
   return (
