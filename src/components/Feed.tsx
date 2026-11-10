@@ -6,7 +6,9 @@ import { useStore } from "../store";
 import { Avatar, Img, Sheet } from "./ui";
 import VideoSurface, { type VideoHandle } from "./VideoSurface";
 import PlayerControls from "./PlayerControls";
+import { MobileFeedMiniBar, MobileFullscreenControls } from "./MobileProgress";
 import PlaybackLock from "./PlaybackLock";
+import { playbackProgressStore } from "../playbackStore";
 import { ArticlePanel, CommentsPanel, EpisodesPanel } from "./Panels";
 import { setBackHandler } from "../back";
 import {
@@ -43,10 +45,9 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const [cards] = useState<Record<number, VideoCard>>({});
   const [posts, setPosts] = useState<Record<number, Post>>({});
 
-  const [time, setTime] = useState(0);
+  const timeRef = useRef(0);
   const [duration, setDuration] = useState(0);
   const [vsize, setVsize] = useState({ w: 0, h: 0 });
-  const [buffered, setBuffered] = useState(0);
   const [paused, setPaused] = useState(false);
   const [controlsLocked, setControlsLocked] = useState(false);
   const [rate, setRate] = useState(1);
@@ -116,9 +117,6 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const pinchRef = useRef<{
     dist0: number; midX0: number; midY0: number; scale0: number; x0: number; y0: number;
   } | null>(null);
-  /* 进度条拖动 */
-  const barScrub = useRef(false);
-  const [barPct, setBarPct] = useState<number | null>(null);
   const gesture = useRef<{
     x: number; y: number; startX: number; startY: number; t: number; timer: number | null;
     mode: "idle" | "hold" | "scrub" | "pan"; base: number; width: number; playing: boolean;
@@ -133,11 +131,12 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const episodes = detail?.episodes || [];
   const post = posts[curId];
 
-  /* 观看进度：onTime 里每 5 秒落一次；拖动进度条期间忽略底层 timeupdate 防止进度条回跳 */
+  /* 观看进度：onTime 里每 5 秒落一次；手势拖动期间忽略底层 timeupdate 防止进度条回跳 */
   const onTimeTick = (t: number) => {
+    timeRef.current = t;
     liveRef.current = { id: curId, ep: curEp, dur: duration, t };
-    if (!barScrub.current && gesture.current?.mode !== "scrub") {
-      setTime(t);
+    if (gesture.current?.mode !== "scrub") {
+      playbackProgressStore.setTime(t);
     }
     const now = Date.now();
     if (duration > 0 && now - lastSaveRef.current > 5000) {
@@ -149,12 +148,14 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   /* 拿到时长后再续播：只对进入时那一条生效，且不跳到片尾 */
   const onDurationTick = (d: number) => {
     setDuration(d);
+    playbackProgressStore.setDuration(d);
     liveRef.current = { ...liveRef.current, dur: d };
     const r = resumeRef.current;
     if (r && r.key === playKey && r.t > 1 && (!d || r.t < d - 3)) {
       resumeRef.current = null;
       videoRef.current?.seek(r.t, "history_resume");
-      setTime(r.t);
+      timeRef.current = r.t;
+      playbackProgressStore.setTime(r.t);
     }
   };
 
@@ -199,8 +200,6 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
   /* 倍速：长按 / 锁定 → 2.0x，否则用基准倍速 */
   const effRate = holdSpeed || speedLock ? 2 : rate;
-  /* 进度条显示百分比（拖动时用拖动值） */
-  const barProgress = barPct ?? (duration ? time / duration : 0);
   /* 是否为横屏视频（16:9 等宽大于高） */
   const isLandscapeVideo = vsize.w > vsize.h && vsize.h > 0;
   /* 仅当「全屏 + 横屏视频 + 手机系统视口尚未横过来 (!vpLandscape)」时才用 CSS 旋转 90° 兜底；
@@ -379,7 +378,13 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
   /* 切换条目/集数时重置播放与缩放状态 */
   useEffect(() => {
-    setTime(0); setDuration(0); setBuffered(0); setErr(""); setWaiting(true); setPaused(false); setDescOpen(false);
+    timeRef.current = 0;
+    playbackProgressStore.reset();
+    setDuration(0);
+    setErr("");
+    setWaiting(true);
+    setPaused(false);
+    setDescOpen(false);
     setVsize({ w: 0, h: 0 });
     setPortraitFit("contain");
     setZoom({ scale: 1, x: 0, y: 0, gesturing: false });
@@ -422,8 +427,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         case "ArrowDown": e.preventDefault(); go(1); break;
         case "ArrowUp": e.preventDefault(); go(-1); break;
         case " ": e.preventDefault(); videoRef.current?.toggle(); break;
-        case "ArrowLeft": e.preventDefault(); videoRef.current?.seek(Math.max(0, time - 5), "keyboard_shortcut"); break;
-        case "ArrowRight": e.preventDefault(); videoRef.current?.seek(time + 5, "keyboard_shortcut"); break;
+        case "ArrowLeft": e.preventDefault(); videoRef.current?.seek(Math.max(0, timeRef.current - 5), "keyboard_shortcut"); break;
+        case "ArrowRight": e.preventDefault(); videoRef.current?.seek(timeRef.current + 5, "keyboard_shortcut"); break;
         case "f": case "F": toggleFull(); break;
         case "t": case "T": setTheater((v) => !v); break;
         case "m": case "M": setMuted((v) => !v); break;
@@ -437,7 +442,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     window.addEventListener("keydown", fn);
     return () => window.removeEventListener("keydown", fn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, controlsLocked, panel, time, index]);
+  }, [active, controlsLocked, panel, index]);
 
   /* 安卓返回键：面板打开时先关面板 */
   useEffect(() => {
@@ -537,7 +542,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
     const g = {
       x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY,
-      t: Date.now(), base: time, width: span,
+      t: Date.now(), base: timeRef.current, width: span,
       playing: videoRef.current?.el()?.paused === false,
       mode: "idle" as "idle" | "hold" | "scrub" | "pan",
       timer: window.setTimeout(() => {
@@ -624,7 +629,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       scrubTarget.current = null;
       if (!cancelled && target != null) {
         setErr("");
-        setTime(target);
+        timeRef.current = target;
+        playbackProgressStore.setTime(target);
         videoRef.current?.seek(target, "mobile_gesture");
       }
       if (g.playing && active) videoRef.current?.play();
@@ -679,50 +685,6 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     return () => el.removeEventListener("touchmove", fn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDesktop, videoIds.length, fs]);
-
-  /* —— 进度条拖动（直接用当前触发元素的 BoundingRect，旋转舞台下按 Y 轴换算） —— */
-  const barPctAt = (barEl: HTMLElement | null, clientX: number, clientY: number) => {
-    const r = barEl?.getBoundingClientRect();
-    if (!r) return null;
-    const span = rotated ? r.height : r.width;
-    if (!span) return null;
-    const raw = rotated ? (clientY - r.top) / span : (clientX - r.left) / span;
-    return Math.max(0, Math.min(1, raw));
-  };
-  const barSeekTo = (barEl: HTMLElement | null, clientX: number, clientY: number) => {
-    const pct = barPctAt(barEl, clientX, clientY);
-    if (pct == null) return null;
-    setBarPct(pct);
-    return pct;
-  };
-  const onBarDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    videoRef.current?.trace("seek.input.down", { input: "mobile_bar" });
-    barScrub.current = true;
-    const el = e.currentTarget as HTMLElement;
-    try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-    barSeekTo(el, e.clientX, e.clientY);
-  };
-  const onBarMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!barScrub.current) return;
-    e.stopPropagation();
-    videoRef.current?.trace("seek.input.move", { input: "mobile_bar" });
-    barSeekTo(e.currentTarget as HTMLElement, e.clientX, e.clientY);
-  };
-  const onBarUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!barScrub.current) return;
-    barScrub.current = false;
-    e.stopPropagation();
-    const pct = barPctAt(e.currentTarget as HTMLElement, e.clientX, e.clientY) ?? barPct;
-    setBarPct(null);
-    if (pct != null && duration > 0) {
-      const target = Math.max(0, Math.min(duration - 0.15, pct * duration));
-      setErr("");
-      setTime(target);
-      videoRef.current?.trace("seek.input.up", { input: "mobile_bar", target });
-      videoRef.current?.seek(target, "mobile_bar");
-    }
-  };
 
   const togglePip = async () => {
     try {
@@ -921,39 +883,25 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                           还原画面 ({zoom.scale.toFixed(1)}x)
                         </button>
                       )}
-                      <div className="absolute inset-x-0 z-30 px-4" style={{ bottom: rotated || vpLandscape ? 46 : "calc(var(--sab, 0px) + 52px)", height: 26 }}>
-                        <div className="relative h-full" style={{ touchAction: "none" }}
-                          onPointerDown={onBarDown} onPointerMove={onBarMove} onPointerUp={onBarUp} onPointerCancel={onBarUp}>
-                          <div className={`absolute inset-x-0 bottom-[10px] rounded-full transition-all ${barPct !== null ? "h-[5px]" : "h-[3px]"}`}
-                            style={{ background: "rgba(255,255,255,.3)" }}>
-                            <div className="h-full rounded-full bg-white" style={{ width: `${barProgress * 100}%` }} />
-                          </div>
-                          {barPct !== null && (
-                            <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2.5 py-1 rounded-md hg-chip-strong backdrop-blur-md text-[12px] font-bold tabular-nums whitespace-nowrap">
-                              {fmtTime(barPct * (duration || 0))} / {fmtTime(duration)}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="absolute inset-x-0 z-40 flex items-center gap-3 px-4"
-                        style={{ bottom: rotated || vpLandscape ? 10 : "calc(var(--sab, 0px) + 10px)" }}>
-                        <button onClick={() => videoRef.current?.toggle()}
-                          className="hg-chip shrink-0 w-9 h-9 rounded-full flex items-center justify-center pressable">
-                          {paused ? <IPlayF size={18} /> : <IPauseF size={17} />}
-                        </button>
-                        <span className="shrink-0 text-[11.5px] font-semibold hg-ink-2 tabular-nums">{fmtTime(time)}</span>
-                        <button
-                          onClick={() => {
-                            if (speedLock) { setSpeedLock(false); return; }
-                            const seq = [1, 1.25, 1.5, 2];
-                            const idx = seq.indexOf(rate);
-                            setRate(seq[(idx + 1) % seq.length]);
-                          }}
-                          className={`ml-auto shrink-0 flex items-center gap-1 px-2.5 h-8 rounded-full text-[12px] font-bold pressable ${effRate !== 1 ? "bg-primary text-on-primary" : "hg-chip hg-ink-2"}`}>
-                          <IBoltF size={12} />{effRate}x
-                        </button>
-                        <span className="shrink-0 text-[11.5px] hg-ink-4 tabular-nums">{fmtTime(duration)}</span>
-                      </div>
+                      <MobileFullscreenControls
+                        rotated={rotated}
+                        vpLandscape={vpLandscape}
+                        duration={duration}
+                        paused={paused}
+                        rate={rate}
+                        effRate={effRate}
+                        speedLock={speedLock}
+                        setSpeedLock={setSpeedLock}
+                        setRate={setRate}
+                        onTogglePlay={() => videoRef.current?.toggle()}
+                        onSeek={(target) => {
+                          setErr("");
+                          timeRef.current = target;
+                          playbackProgressStore.setTime(target);
+                          videoRef.current?.seek(target, "mobile_bar");
+                        }}
+                        onTrace={(event, data) => videoRef.current?.trace(event, data)}
+                      />
                     </>
                   )}
                 </div>
@@ -1165,19 +1113,17 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                       详情 · 第 {curEp} 集<IChevR size={11} />
                     </button>
                     {isActive && (
-                      <div className="mx-4 mt-1.5 relative" style={{ height: 22, touchAction: "none" }}
-                        onPointerDown={onBarDown} onPointerMove={onBarMove} onPointerUp={onBarUp} onPointerCancel={onBarUp}>
-                        <div className={`absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-full transition-all ${barPct !== null ? "h-[5px]" : "h-[2.5px]"}`}
-                          style={{ background: "rgba(255,255,255,.3)" }}>
-                          <div className="h-full rounded-full bg-white"
-                            style={{ width: `${barProgress * 100}%`, transition: barPct !== null ? "none" : "width .25s linear" }} />
-                        </div>
-                        {barPct !== null && (
-                          <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2.5 py-1 rounded-md hg-chip-strong backdrop-blur-md text-[12px] font-bold tabular-nums whitespace-nowrap">
-                            {fmtTime(barPct * (duration || 0))} / {fmtTime(duration)}
-                          </div>
-                        )}
-                      </div>
+                      <MobileFeedMiniBar
+                        duration={duration}
+                        rotated={rotated}
+                        onSeek={(target) => {
+                          setErr("");
+                          timeRef.current = target;
+                          playbackProgressStore.setTime(target);
+                          videoRef.current?.seek(target, "mobile_bar");
+                        }}
+                        onTrace={(event, data) => videoRef.current?.trace(event, data)}
+                      />
                     )}
                   </div>
                 </div>
@@ -1190,7 +1136,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       {/* 桌面控制条 */}
       {isDesktop && (
         <PlayerControls
-          paused={paused} time={time} duration={duration} buffered={buffered} rate={rate}
+          paused={paused} duration={duration} rate={rate}
           muted={muted} volume={volume} theater={theater} fullscreen={fullscreen}
           visible={active && !idle}
           seekEnabled={active && !controlsLocked}
@@ -1198,7 +1144,11 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
           nextDisabled={!episodes.some((e) => e.ep_num === curEp + 1) && index >= videoIds.length - 1}
           nextTitle={episodes.some((e) => e.ep_num === curEp + 1) ? "下一集 E" : "下一部 ↓"}
           onToggle={() => videoRef.current?.toggle()}
-          onSeek={(t, source) => { videoRef.current?.seek(t, source); setTime(t); }}
+          onSeek={(t, source) => {
+            videoRef.current?.seek(t, source);
+            timeRef.current = t;
+            playbackProgressStore.setTime(t);
+          }}
           onSeekInteraction={(phase, input, target, pointerTarget) => videoRef.current?.trace(`seek.input.${phase}`, { input, target, pointer_target: pointerTarget })}
           onRate={(r) => { setRate(r); videoRef.current?.rate(r); }}
           onMute={() => setMuted((m) => !m)}

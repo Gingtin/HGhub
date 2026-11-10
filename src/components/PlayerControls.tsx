@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { fmtTime } from "../api";
+import { usePlaybackProgress } from "../playbackStore";
 import { useSeekInput } from "../useSeekInput";
 import { ICheck, ICompress, IExpand, ILockF, INext, IPauseF, IPip, IPlayF, ITheater, IVol, IVolMute } from "../icons";
 
 type Props = {
   paused: boolean;
-  time: number;
-  duration: number;
+  time?: number;
+  duration?: number;
   buffered?: number;
   rate: number;
   muted: boolean;
@@ -34,14 +35,19 @@ type Props = {
 const clock = (s: number) => fmtTime(Math.max(0, s || 0)).padStart(5, "0");
 
 export default function PlayerControls({
-  paused, time, duration, buffered = 0, rate, muted, volume, theater = false, fullscreen = false,
+  paused, time, duration, buffered, rate, muted, volume, theater = false, fullscreen = false,
   visible = true, seekEnabled = true, seekKey, nextDisabled = false, nextTitle = "下一个", onToggle, onSeek, onSeekInteraction, onRate, onMute, onVolume, onPip, onLock, onTheater, onFullscreen, onNext,
 }: Props) {
+  const storeProgress = usePlaybackProgress();
+  const effectiveTime = time ?? storeProgress.time;
+  const effectiveDuration = duration ?? storeProgress.duration;
+  const effectiveBuffered = buffered ?? storeProgress.buffered;
+
   const [speedOpen, setSpeedOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
-  const seek = useSeekInput({ time, duration, enabled: seekEnabled, resetKey: seekKey, onInteraction: onSeekInteraction,
+  const seek = useSeekInput({ time: effectiveTime, duration: effectiveDuration, enabled: seekEnabled, resetKey: seekKey, onInteraction: onSeekInteraction,
     onSeek: (target, input) => onSeek(target, `desktop_${input}`) });
-  const pct = duration ? Math.min(100, (seek.time / duration) * 100) : 0;
+  const pct = effectiveDuration ? Math.min(100, (seek.time / effectiveDuration) * 100) : 0;
 
   useEffect(() => {
     if (!speedOpen) return;
@@ -55,7 +61,7 @@ export default function PlayerControls({
       onPointerDown={(e) => e.stopPropagation()}>
       <div className={`desktop-seek ${seekEnabled ? "is-seekable" : ""}`}>
         <div className="desktop-seek-track">
-          <span className="desktop-seek-buffer" style={{ width: `${Math.min(1, buffered) * 100}%` }} />
+          <span className="desktop-seek-buffer" style={{ width: `${Math.min(1, effectiveBuffered) * 100}%` }} />
           <span className="desktop-seek-played" style={{ width: `${pct}%` }} />
         </div>
         <input aria-label="播放进度" type="range" {...seek.inputProps} />
@@ -70,7 +76,7 @@ export default function PlayerControls({
             <INext size={18} strokeWidth={1.7} />
           </button>
         )}
-        <span className="player-timecode"><span>{clock(seek.time)}</span><span className="player-time-separator">/</span>{clock(duration)}</span>
+        <span className="player-timecode"><span>{clock(seek.time)}</span><span className="player-time-separator">/</span>{clock(effectiveDuration)}</span>
         <div className="player-control-spacer" />
         <div className="player-speed-slot">
           <button className={`player-control player-speed ${rate !== 1 ? "is-on" : ""}`} aria-label="倍速" aria-expanded={speedOpen}

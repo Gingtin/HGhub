@@ -298,18 +298,111 @@ pub fn clear_caches() {
 
 /* ───────────────────────── 协议响应 ───────────────────────── */
 
-fn respond(status: u16, ctype: &str, body: Vec<u8>, cache: &str) -> Response<Vec<u8>> {
-    let len = body.len().to_string();
+fn parse_byte_range(range_header: &str, total: usize) -> Result<Option<std::ops::RangeInclusive<usize>>, ()> {
+    if total == 0 {
+        return Ok(None);
+    }
+    let s = range_header.trim();
+    let Some(spec) = s.strip_prefix("bytes=") else {
+        return Ok(None);
+    };
+    let first = spec.split(',').next().unwrap_or("").trim();
+    let Some((start_str, end_str)) = first.split_once('-') else {
+        return Ok(None);
+    };
+    let start_str = start_str.trim();
+    let end_str = end_str.trim();
+
+    if start_str.is_empty() {
+        let Ok(suffix_len) = end_str.parse::<usize>() else {
+            return Ok(None);
+        };
+        if suffix_len == 0 {
+            return Err(());
+        }
+        let start = total.saturating_sub(suffix_len);
+        let end = total.saturating_sub(1);
+        Ok(Some(start..=end))
+    } else {
+        let Ok(start) = start_str.parse::<usize>() else {
+            return Ok(None);
+        };
+        if start >= total {
+            return Err(());
+        }
+        let end = if end_str.is_empty() {
+            total.saturating_sub(1)
+        } else {
+            let Ok(parsed_end) = end_str.parse::<usize>() else {
+                return Ok(None);
+            };
+            std::cmp::min(parsed_end, total.saturating_sub(1))
+        };
+        if start > end {
+            return Err(());
+        }
+        Ok(Some(start..=end))
+    }
+}
+
+pub fn respond_slice(
+    status: u16,
+    ctype: &str,
+    body: Vec<u8>,
+    cache: &str,
+    range_header: Option<&str>,
+) -> Response<Vec<u8>> {
+    let total = body.len();
+    if let Some(range_raw) = range_header {
+        match parse_byte_range(range_raw, total) {
+            Ok(Some(range)) => {
+                let start = *range.start();
+                let end = *range.end();
+                let slice = body[start..=end].to_vec();
+                let slice_len = slice.len().to_string();
+                let content_range = format!("bytes {start}-{end}/{total}");
+                return Response::builder()
+                    .status(StatusCode::PARTIAL_CONTENT)
+                    .header("Content-Type", ctype)
+                    .header("Content-Length", slice_len)
+                    .header("Content-Range", content_range)
+                    .header("Accept-Ranges", "bytes")
+                    .header("X-Content-Type-Options", "nosniff")
+                    .header("Access-Control-Expose-Headers", "Content-Length, Content-Type, Accept-Ranges, Content-Range")
+                    .header("Cache-Control", cache)
+                    .body(slice)
+                    .unwrap_or_else(|_| Response::new(Vec::new()));
+            }
+            Err(()) => {
+                return Response::builder()
+                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                    .header("Content-Type", "text/plain")
+                    .header("Content-Range", format!("bytes */{total}"))
+                    .header("Content-Length", "0")
+                    .header("Accept-Ranges", "bytes")
+                    .header("Cache-Control", "no-store")
+                    .body(Vec::new())
+                    .unwrap_or_else(|_| Response::new(Vec::new()));
+            }
+            Ok(None) => {}
+        }
+    }
+
+    let len = total.to_string();
     Response::builder()
         .status(StatusCode::from_u16(status).unwrap_or(StatusCode::OK))
         .header("Content-Type", ctype)
         .header("Content-Length", len)
         .header("Accept-Ranges", "bytes")
         .header("X-Content-Type-Options", "nosniff")
-        .header("Access-Control-Expose-Headers", "Content-Length, Content-Type, Accept-Ranges")
+        .header("Access-Control-Expose-Headers", "Content-Length, Content-Type, Accept-Ranges, Content-Range")
         .header("Cache-Control", cache)
         .body(body)
         .unwrap_or_else(|_| Response::new(Vec::new()))
+}
+
+fn respond(status: u16, ctype: &str, body: Vec<u8>, cache: &str) -> Response<Vec<u8>> {
+    respond_slice(status, ctype, body, cache, None)
 }
 
 /// 主清单的子清单也经 /seg 返回：必须继续改写，不能把内层 URL 原样交给播放器。
@@ -318,6 +411,7 @@ fn segment_response(
     ctype: Option<&str>,
     bytes: Vec<u8>,
     origin: &str,
+    range: Option<&str>,
 ) -> Response<Vec<u8>> {
     let playlist = ctype.is_some_and(|t| t.to_ascii_lowercase().contains("mpegurl"))
         || bytes.starts_with(b"#EXTM3U")
@@ -339,11 +433,12 @@ fn segment_response(
             ),
         };
     }
-    respond(
+    respond_slice(
         200,
         ctype.unwrap_or("application/octet-stream"),
         bytes,
         "public, max-age=3600",
+        range,
     )
 }
 
@@ -351,7 +446,12 @@ fn segment_response(
 ///
 /// `origin` 是本平台自定义协议的完整基址，见 [`LOCAL_ORIGIN`]；用于改写 m3u8 里的
 /// 分片与 key 地址。正常情况下调用方直接传 [`LOCAL_ORIGIN`]。
-pub async fn handle(path: &str, query: &str, origin: &str) -> Response<Vec<u8>> {
+pub async fn handle(
+    path: &str,
+    query: &str,
+    origin: &str,
+    range: Option<&str>,
+) -> Response<Vec<u8>> {
     let target = query
         .split('&')
         .find_map(|kv| kv.strip_prefix("u="))
@@ -376,7 +476,7 @@ pub async fn handle(path: &str, query: &str, origin: &str) -> Response<Vec<u8>> 
     let response = match path {
         "/img" => match load_image(&target).await {
             Ok((kind, bytes)) => {
-                respond(200, &kind, bytes.as_ref().clone(), "public, max-age=86400")
+                respond_slice(200, &kind, bytes.as_ref().clone(), "public, max-age=86400", range)
             }
             Err(e) => respond(502, "text/plain", e.into_bytes(), "no-store"),
         },
@@ -391,7 +491,7 @@ pub async fn handle(path: &str, query: &str, origin: &str) -> Response<Vec<u8>> 
         },
         "/seg" => match load_segment(&target).await {
             Ok((ctype, bytes)) => {
-                segment_response(&target, ctype.as_deref(), bytes.as_ref().clone(), origin)
+                segment_response(&target, ctype.as_deref(), bytes.as_ref().clone(), origin, range)
             }
             Err(e) => respond(502, "text/plain", e.into_bytes(), "no-store"),
         },
@@ -438,6 +538,7 @@ mod tests {
             Some("application/octet-stream"),
             text.as_bytes().to_vec(),
             LOCAL_ORIGIN,
+            None,
         );
         let body = std::str::from_utf8(response.body()).unwrap();
         assert_eq!(body.matches(&format!("{LOCAL_ORIGIN}/seg?u=")).count(), 4);
@@ -460,6 +561,7 @@ mod tests {
             None,
             b"\xef\xbb\xbf#EXTM3U\nsegment.ts\n".to_vec(),
             LOCAL_ORIGIN,
+            None,
         );
         assert!(bom.body().starts_with(b"#EXTM3U\n"));
     }
@@ -489,7 +591,7 @@ mod tests {
             &text[..text.len().min(160)]
         );
         let q = format!("u={}", enc(&url));
-        let resp = handle("/hls", &q, LOCAL_ORIGIN).await;
+        let resp = handle("/hls", &q, LOCAL_ORIGIN, None).await;
         let body = String::from_utf8_lossy(resp.body()).to_string();
         println!("proxied status={} len={}", resp.status(), body.len());
         assert!(body.contains("#EXTM3U"));
@@ -501,7 +603,7 @@ mod tests {
             .to_string();
         println!("seg line: {}", &seg_line[..seg_line.len().min(120)]);
         let seg_q = seg_line.split("?u=").nth(1).unwrap();
-        let seg = handle("/seg", &format!("u={seg_q}"), LOCAL_ORIGIN).await;
+        let seg = handle("/seg", &format!("u={seg_q}"), LOCAL_ORIGIN, None).await;
         println!("segment status={} len={}", seg.status(), seg.body().len());
         assert_eq!(seg.status(), 200);
         assert!(seg.body().len() > 1000);
@@ -581,5 +683,39 @@ mod tests {
             }
             Err(e) => panic!("image failed: {e}"),
         }
+    }
+
+    #[test]
+    fn range_request_parsing_and_slicing() {
+        let total = 1000;
+        assert_eq!(parse_byte_range("bytes=0-499", total), Ok(Some(0..=499)));
+        assert_eq!(parse_byte_range("bytes=500-", total), Ok(Some(500..=999)));
+        assert_eq!(parse_byte_range("bytes=-200", total), Ok(Some(800..=999)));
+        assert_eq!(parse_byte_range("bytes=0-", total), Ok(Some(0..=999)));
+        assert_eq!(parse_byte_range("bytes=1500-2000", total), Err(()));
+        assert_eq!(parse_byte_range("bytes=600-500", total), Err(()));
+        assert_eq!(parse_byte_range("invalid-header", total), Ok(None));
+
+        let data = (0..100u8).collect::<Vec<u8>>();
+        let full_resp = respond_slice(200, "video/mp2t", data.clone(), "no-store", None);
+        assert_eq!(full_resp.status(), 200);
+        assert_eq!(full_resp.body().len(), 100);
+
+        let partial_resp = respond_slice(200, "video/mp2t", data.clone(), "no-store", Some("bytes=10-19"));
+        assert_eq!(partial_resp.status(), 206);
+        assert_eq!(partial_resp.body().len(), 10);
+        assert_eq!(partial_resp.body()[0], 10);
+        assert_eq!(partial_resp.body()[9], 19);
+        assert_eq!(
+            partial_resp.headers().get("Content-Range").unwrap().to_str().unwrap(),
+            "bytes 10-19/100"
+        );
+
+        let err_resp = respond_slice(200, "video/mp2t", data, "no-store", Some("bytes=500-600"));
+        assert_eq!(err_resp.status(), 416);
+        assert_eq!(
+            err_resp.headers().get("Content-Range").unwrap().to_str().unwrap(),
+            "bytes */100"
+        );
     }
 }
