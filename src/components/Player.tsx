@@ -80,9 +80,10 @@ export default function Player({
         preferManagedMediaSource: false,
         autoStartLoad: false,
         lowLatencyMode: false,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        backBufferLength: 30,
+        maxBufferLength: 10,
+        maxMaxBufferLength: 18,
+        backBufferLength: 6,
+        maxBufferSize: 15 * 1024 * 1024,
         maxBufferHole: 0.5,
         nudgeOffset: 0.25,
         nudgeMaxRetry: 6,
@@ -140,7 +141,21 @@ export default function Player({
     return () => {
       trace("source.cleanup");
       dispatchMachine({ type: "RESET" });
-      if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
+      if (hlsRef.current) {
+        try {
+          hlsRef.current.stopLoad();
+          hlsRef.current.detachMedia();
+          hlsRef.current.destroy();
+        } catch { /* ignore */ }
+        hlsRef.current = null;
+      }
+      if (video) {
+        try {
+          video.pause();
+          video.removeAttribute("src");
+          video.load();
+        } catch { /* ignore */ }
+      }
     };
   }, [src, autoPlay]);
 

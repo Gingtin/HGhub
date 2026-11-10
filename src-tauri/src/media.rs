@@ -10,6 +10,7 @@ use aes::Aes128;
 use once_cell::sync::Lazy;
 use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::http::{Response, StatusCode};
 
@@ -26,29 +27,72 @@ pub const LOCAL_ORIGIN: &str = "hg://localhost";
 const IMG_KEY: &[u8] = b"f5d965df75336270";
 const IMG_IV: &[u8] = b"97b60394abc2fbe1";
 
-static IMG_CACHE: Lazy<Mutex<HashMap<String, Arc<Vec<u8>>>>> =
+static CACHE_SEQ: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Clone)]
+struct CacheEntry<V> {
+    access: u64,
+    val: V,
+}
+
+static IMG_CACHE: Lazy<Mutex<HashMap<String, CacheEntry<Arc<Vec<u8>>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
-static PL_CACHE: Lazy<Mutex<HashMap<String, Arc<String>>>> =
+static PL_CACHE: Lazy<Mutex<HashMap<String, CacheEntry<Arc<String>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
-static KEY_CACHE: Lazy<Mutex<HashMap<String, (String, Arc<Vec<u8>>)>>> =
+static KEY_CACHE: Lazy<Mutex<HashMap<String, CacheEntry<(String, Arc<Vec<u8>>)>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
-static SEG_CACHE: Lazy<Mutex<HashMap<String, (String, Arc<Vec<u8>>)>>> =
+static SEG_CACHE: Lazy<Mutex<HashMap<String, CacheEntry<(String, Arc<Vec<u8>>)>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-const IMG_CACHE_MAX: usize = 240;
+#[cfg(target_os = "android")]
+const IMG_CACHE_MAX: usize = 48;
+#[cfg(not(target_os = "android"))]
+const IMG_CACHE_MAX: usize = 120;
+
+#[cfg(target_os = "android")]
+const PL_CACHE_MAX: usize = 20;
+#[cfg(not(target_os = "android"))]
 const PL_CACHE_MAX: usize = 60;
+
+#[cfg(target_os = "android")]
+const KEY_CACHE_MAX: usize = 64;
+#[cfg(not(target_os = "android"))]
 const KEY_CACHE_MAX: usize = 120;
-const SEG_CACHE_MAX: usize = 36;
+
+#[cfg(target_os = "android")]
+const SEG_CACHE_MAX: usize = 8;
+#[cfg(not(target_os = "android"))]
+const SEG_CACHE_MAX: usize = 16;
+
+#[cfg(target_os = "android")]
+const SEG_CACHE_MAX_BYTES: usize = 2 * 1024 * 1024;
+#[cfg(not(target_os = "android"))]
 const SEG_CACHE_MAX_BYTES: usize = 4 * 1024 * 1024;
 
-fn cache_put<V: Clone>(map: &Mutex<HashMap<String, V>>, key: String, val: V, max: usize) {
-    let mut m = map.lock().unwrap();
-    if m.len() >= max {
-        if let Some(k) = m.keys().next().cloned() {
-            m.remove(&k);
-        }
+fn cache_get<V: Clone>(map: &Mutex<HashMap<String, CacheEntry<V>>>, key: &str) -> Option<V> {
+    let mut m = map.lock().ok()?;
+    let seq = CACHE_SEQ.fetch_add(1, Ordering::Relaxed);
+    if let Some(entry) = m.get_mut(key) {
+        entry.access = seq;
+        return Some(entry.val.clone());
     }
-    m.insert(key, val);
+    None
+}
+
+fn cache_put<V: Clone>(map: &Mutex<HashMap<String, CacheEntry<V>>>, key: String, val: V, max: usize) {
+    if let Ok(mut m) = map.lock() {
+        if m.len() >= max {
+            if let Some(oldest_key) = m
+                .iter()
+                .min_by_key(|(_, entry)| entry.access)
+                .map(|(k, _)| k.clone())
+            {
+                m.remove(&oldest_key);
+            }
+        }
+        let seq = CACHE_SEQ.fetch_add(1, Ordering::Relaxed);
+        m.insert(key, CacheEntry { access: seq, val });
+    }
 }
 
 /* ───────────────────────── AES ───────────────────────── */
@@ -105,7 +149,7 @@ fn image_kind(buf: &[u8]) -> Option<&'static str> {
 
 /// 取封面：命中缓存直接返回，否则下载并按需解密。
 pub async fn load_image(url: &str) -> Result<(String, Arc<Vec<u8>>), String> {
-    if let Some(hit) = IMG_CACHE.lock().unwrap().get(url).cloned() {
+    if let Some(hit) = cache_get(&IMG_CACHE, url) {
         let kind = image_kind(&hit).unwrap_or("image/jpeg");
         return Ok((kind.to_string(), hit));
     }
@@ -194,7 +238,7 @@ fn rewrite_uri_attr(line: &str, prefix: &str) -> String {
 /// 取 m3u8 并把 key / 子列表 / 分片地址改写到本地协议。
 pub async fn load_playlist(url: &str, prefix: &str) -> Result<Arc<String>, String> {
     let cache_key = format!("{prefix}|{url}");
-    if let Some(hit) = PL_CACHE.lock().unwrap().get(&cache_key).cloned() {
+    if let Some(hit) = cache_get(&PL_CACHE, &cache_key) {
         return Ok(hit);
     }
     let (_, bytes) = fetch_bytes(url).await?;
@@ -261,10 +305,10 @@ fn absolutize_uri_in_attr(base: &str, line: &str) -> String {
 
 /// 加载分片或 AES Key（带内存缓存，避免拖动进度条时重复拉取同一 Key 或分片导致卡顿）。
 pub async fn load_segment(url: &str) -> Result<(Option<String>, Arc<Vec<u8>>), String> {
-    if let Some((ctype, hit)) = KEY_CACHE.lock().unwrap().get(url).cloned() {
+    if let Some((ctype, hit)) = cache_get(&KEY_CACHE, url) {
         return Ok((Some(ctype), hit));
     }
-    if let Some((ctype, hit)) = SEG_CACHE.lock().unwrap().get(url).cloned() {
+    if let Some((ctype, hit)) = cache_get(&SEG_CACHE, url) {
         return Ok((Some(ctype), hit));
     }
     let (ctype, bytes) = fetch_bytes(url).await?;
@@ -288,12 +332,12 @@ pub async fn load_segment(url: &str) -> Result<(Option<String>, Arc<Vec<u8>>), S
     Ok((Some(mime), arc))
 }
 
-/// 清空封面 / 播放列表 / 分片内存缓存
+/// 清空封面 / 播放列表 / 分片内存缓存并回收虚拟内存
 pub fn clear_caches() {
-    if let Ok(mut g) = IMG_CACHE.lock() { g.clear(); }
-    if let Ok(mut g) = PL_CACHE.lock() { g.clear(); }
-    if let Ok(mut g) = KEY_CACHE.lock() { g.clear(); }
-    if let Ok(mut g) = SEG_CACHE.lock() { g.clear(); }
+    if let Ok(mut g) = IMG_CACHE.lock() { g.clear(); g.shrink_to_fit(); }
+    if let Ok(mut g) = PL_CACHE.lock() { g.clear(); g.shrink_to_fit(); }
+    if let Ok(mut g) = KEY_CACHE.lock() { g.clear(); g.shrink_to_fit(); }
+    if let Ok(mut g) = SEG_CACHE.lock() { g.clear(); g.shrink_to_fit(); }
 }
 
 /* ───────────────────────── 协议响应 ───────────────────────── */

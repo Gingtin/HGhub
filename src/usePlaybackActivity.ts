@@ -64,7 +64,40 @@ export function usePlaybackActivity(
     };
     v.addEventListener("play", guard);
     v.addEventListener("playing", guard);
-    return () => { mounted.current = false; v.removeEventListener("play", guard); v.removeEventListener("playing", guard); v.pause(); };
+
+    const onVisibilityChange = () => {
+      const vid = videoRef.current;
+      const hls = hlsRef.current;
+      if (document.hidden) {
+        if (vid && !vid.paused) {
+          wanted.current = true;
+          vid.pause();
+        }
+        if (hls?.levels.length) {
+          try { hls.stopLoad(); } catch { /* ignore */ }
+        }
+        latest.current.trace("app.visibility_hidden");
+      } else {
+        if (mounted.current && latest.current.active) {
+          if (hls?.levels.length && !hls.loadingEnabled) {
+            try { hls.startLoad(vid?.currentTime || -1); } catch { /* ignore */ }
+          }
+          if (wanted.current && vid) {
+            vid.play().catch(() => {});
+          }
+        }
+        latest.current.trace("app.visibility_visible");
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      mounted.current = false;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      v.removeEventListener("play", guard);
+      v.removeEventListener("playing", guard);
+      v.pause();
+    };
   }, []);
   return { play, pause, isActive: () => mounted.current && latest.current.active };
 }

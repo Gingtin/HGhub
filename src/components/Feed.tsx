@@ -33,6 +33,19 @@ type Props = {
   startTime?: number;
 };
 
+function pruneRecord<T>(record: Record<string | number, T>, keepKey: string | number, max = 20): Record<string | number, T> {
+  const keys = Object.keys(record);
+  if (keys.length <= max) return record;
+  const keepStr = String(keepKey);
+  const next: Record<string | number, T> = {};
+  const older = keys.filter((k) => k !== keepStr);
+  const retain = new Set([keepStr, ...older.slice(older.length - (max - 1))]);
+  for (const k of keys) {
+    if (retain.has(k)) next[k] = record[k];
+  }
+  return next;
+}
+
 export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind = "video", active, bottomInset, onBack, onNearEnd, startEp, startTime }: Props) {
   const store = useStore();
   const { isLiked, isFav, toggleLikeLocal, toggleFavLocal, toggleFollowLocal, muted, setMuted, volume, setVolume, toast, addHistory, user, setLoginOpen } = store;
@@ -356,31 +369,31 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* 拉详情（当前 + 邻接预取，走 TanStack Query 缓存与去重） */
+  /* 拉详情（当前 + 邻接预取，走 TanStack Query 缓存与去重，限制最多留存 20 项） */
   useEffect(() => {
     let alive = true;
     const need = [videoIds[index], videoIds[index + 1], videoIds[index - 1]].filter(Boolean);
     need.forEach((id) => {
       if (details[id]) return;
-      fetchVideoDetail(id).then((d) => { if (alive) setDetails((m) => ({ ...m, [id]: d })); }).catch(() => {});
+      fetchVideoDetail(id).then((d) => { if (alive) setDetails((m) => pruneRecord({ ...m, [id]: d }, curId, 20)); }).catch(() => {});
     });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, videoIds]);
 
-  /* 吃瓜帖子：直接拿帖子详情（走 Query 缓存） */
+  /* 吃瓜帖子：直接拿帖子详情（走 Query 缓存，限制最多留存 20 项） */
   useEffect(() => {
     if (kind !== "post") return;
     let alive = true;
     [videoIds[index], videoIds[index + 1], videoIds[index - 1]].filter(Boolean).forEach((id) => {
       if (posts[id]) return;
-      fetchPostDetail(id).then((p) => { if (alive) setPosts((m) => ({ ...m, [id]: p })); }).catch(() => {});
+      fetchPostDetail(id).then((p) => { if (alive) setPosts((m) => pruneRecord({ ...m, [id]: p }, curId, 20)); }).catch(() => {});
     });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, index, videoIds]);
 
-  /* 拉播放地址（走 Query 缓存） */
+  /* 拉播放地址（走 Query 缓存，限制最多留存 20 项） */
   useEffect(() => {
     if (!curId) return;
     if (playUrls[playKey]) return;
@@ -389,7 +402,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       .then((info) => {
         if (!alive) return;
         if (!info?.video_url) throw new Error("暂无播放地址");
-        setPlayUrls((m) => ({ ...m, [playKey]: info.video_url }));
+        setPlayUrls((m) => pruneRecord({ ...m, [playKey]: info.video_url }, playKey, 20));
         addHistory(curId, curEp);
       })
       .catch((e) => { if (alive) dispatchMachine({ type: "ERROR", error: (e as Error).message || "取播放地址失败" }); });
@@ -756,7 +769,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     ? "contain"
     : isLandscapeVideo
       ? (fs || vpLandscape ? "contain" : portraitFit)
-      : (vpLandscape ? "contain" : "cover");
+      : (vpLandscape ? "contain" : portraitFit);
 
   return (
     <div
@@ -1206,6 +1219,25 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                               ★ {meta.score.toFixed(1)}
                             </span>
                           )}
+
+                          {/* 画面比例切换（针对三星 S24U 等 19.5:9 旗舰屏：一键切换原画/满屏） */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = portraitFit === "contain" ? "cover" : "contain";
+                              setPortraitFit(next);
+                              toast(next === "cover" ? "已切换：满屏铺满 (19.5:9 沉浸)" : "已切换：原画完整 (防字幕裁剪)", "info");
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold text-white/95 backdrop-blur-md pressable transition-all"
+                            style={{
+                              background: portraitFit === "cover" ? "rgba(96, 205, 255, 0.22)" : "rgba(255, 255, 255, 0.14)",
+                              border: portraitFit === "cover" ? "1px solid rgba(96, 205, 255, 0.45)" : "1px solid rgba(255, 255, 255, 0.2)",
+                              boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+                            }}
+                            title="切换画面比例（原画完整 / 满屏铺满）">
+                            <ICompress size={12} className={portraitFit === "cover" ? "text-primary" : "text-white/80"} />
+                            <span>{portraitFit === "cover" ? "满屏" : "原画"}</span>
+                          </button>
                         </div>
 
                         {/* 标题 */}

@@ -35,6 +35,17 @@
 .plat-windows { --r-sm: 4px; --r-md: 8px; --r-lg: 8px; --r-ctl: 4px; --nav-h: 0px; }
 .plat-macos { --r-sm: 6px; --r-md: 10px; --r-lg: 12px; --r-ctl: 6px; --nav-h: 0px; }
 .plat-ios { --r-sm: 10px; --r-md: 14px; --r-lg: 18px; --r-ctl: 999px; -webkit-touch-callout: none; }
+.plat-android {
+  --r-sm: 10px; --r-md: 14px; --r-lg: 18px; --r-ctl: 999px;
+  -webkit-touch-callout: none;
+  /* 专为三星 Galaxy S24 Ultra / AMOLED 调优的纯黑深渊色板（完全熄灭像素，极致对比度与节能） */
+  --p-canvas: #000000;
+  --p-bg: #000000;
+  --p-s1: #0a0a0a;
+  --p-s2: #121212;
+  --p-s3: #1a1a1a;
+  --p-s4: #242424;
+}
 html.theme-light {
   color-scheme: light;
   --p-canvas: #f3f3f3;
@@ -104,8 +115,15 @@ input, textarea { user-select: text; }
 img, video { -webkit-user-drag: none; }
 button { cursor: pointer; font-family: inherit; }
 
-/* ——— 原生质感滚动条 ——— */
-.scroll-y { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--p-s4) transparent; }
+/* ——— 原生质感滚动条（120Hz 硬件加速触摸平滑滚动） ——— */
+.scroll-y {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+  scrollbar-color: var(--p-s4) transparent;
+}
 .scroll-x { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
 .scroll-x::-webkit-scrollbar { display: none; }
 .scroll-y::-webkit-scrollbar { width: 5px; }
