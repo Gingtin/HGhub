@@ -514,7 +514,7 @@ pub async fn edge(
     // 取播放地址的 POST 没有副作用，和 GET 一样允许重试
     let can_retry = (method.eq_ignore_ascii_case("GET") && body.is_none())
         || (method.eq_ignore_ascii_case("POST") && operation == "play");
-    let value = with_retry(can_retry, || {
+    let value = match with_retry(can_retry, || {
         attempt += 1;
         let attempt = attempt;
         let envelope = envelope.clone();
@@ -595,7 +595,56 @@ pub async fn edge(
             result
         }
     })
-    .await?;
+    .await {
+        Ok(v) => v,
+        Err(e) if guest_get => {
+            let alt_origin = if cur == crate::lines::FIXED[0].1 {
+                Some(crate::lines::FIXED[1].1)
+            } else if cur == crate::lines::FIXED[1].1 {
+                Some(crate::lines::FIXED[0].1)
+            } else {
+                None
+            };
+            if let Some(alt) = alt_origin {
+                let alt_cur = alt.to_string();
+                let alt_url = format!("{alt_cur}/api/edge/request");
+                let alt_referer = format!("{alt_cur}/");
+                let alt_res = with_retry(true, || {
+                    let envelope = envelope.clone();
+                    let url = alt_url.clone();
+                    let referer = alt_referer.clone();
+                    async move {
+                        let next = network_policy::parse_target(&url)?;
+                        let (target, client) = client_for(next.as_str()).await?;
+                        let req = client
+                            .post(target)
+                            .header("Accept", "application/json")
+                            .header("Referer", &referer)
+                            .json(&envelope);
+                        let resp = req.send().await.map_err(|e| err_text(&e))?;
+                        let status = resp.status();
+                        if !status.is_success() {
+                            return Err(format!("HTTP {}", status.as_u16()));
+                        }
+                        let text = resp.text().await.map_err(|e| err_text(&e))?;
+                        serde_json::from_str::<Value>(&text)
+                            .map_err(|e| format!("{e}: {}", text.chars().take(160).collect::<String>()))
+                    }
+                }).await;
+
+                if let Ok(v) = alt_res {
+                    let _ = set_base(alt);
+                    crate::playback_log::record("line.auto_failover", json!({ "from": cur, "to": alt }));
+                    v
+                } else {
+                    return Err(e);
+                }
+            } else {
+                return Err(e);
+            }
+        }
+        Err(e) => return Err(e),
+    };
 
     if value.is_null() {
         return Ok(Value::Null);
