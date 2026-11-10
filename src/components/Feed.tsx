@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { api, cover, fmt, fmtTime, isMobile } from "../api";
+import { fetchPlayInfo, fetchPostDetail, fetchVideoDetail } from "../queries";
 import type { Detail, Episode, Post, VideoCard } from "../types";
 import { useStore } from "../store";
 import { Avatar, Img, Sheet } from "./ui";
@@ -337,36 +338,36 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* 拉详情（当前 + 邻接预取） */
+  /* 拉详情（当前 + 邻接预取，走 TanStack Query 缓存与去重） */
   useEffect(() => {
     let alive = true;
     const need = [videoIds[index], videoIds[index + 1], videoIds[index - 1]].filter(Boolean);
     need.forEach((id) => {
       if (details[id]) return;
-      api.video(id).then((d) => { if (alive) setDetails((m) => ({ ...m, [id]: d })); }).catch(() => {});
+      fetchVideoDetail(id).then((d) => { if (alive) setDetails((m) => ({ ...m, [id]: d })); }).catch(() => {});
     });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, videoIds]);
 
-  /* 吃瓜帖子：直接拿帖子详情（含 video_url） */
+  /* 吃瓜帖子：直接拿帖子详情（走 Query 缓存） */
   useEffect(() => {
     if (kind !== "post") return;
     let alive = true;
     [videoIds[index], videoIds[index + 1], videoIds[index - 1]].filter(Boolean).forEach((id) => {
       if (posts[id]) return;
-      api.post(id).then((p) => { if (alive) setPosts((m) => ({ ...m, [id]: p })); }).catch(() => {});
+      fetchPostDetail(id).then((p) => { if (alive) setPosts((m) => ({ ...m, [id]: p })); }).catch(() => {});
     });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, index, videoIds]);
 
-  /* 拉播放地址 */
+  /* 拉播放地址（走 Query 缓存） */
   useEffect(() => {
     if (!curId) return;
     if (playUrls[playKey]) return;
     let alive = true;
-    api.play(curId, curEp)
+    fetchPlayInfo(curId, curEp)
       .then((info) => {
         if (!alive) return;
         if (!info?.video_url) throw new Error("暂无播放地址");
@@ -756,6 +757,16 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         style={{ right: isDesktop && panel ? 372 : 0, transition: "right .3s cubic-bezier(.2,0,0,1)" }}>
         {videoIds.map((vid, i) => {
           const isActive = i === index;
+          const isNear = Math.abs(i - index) <= 2;
+          if (!isNear) {
+            return (
+              <section
+                key={vid}
+                style={!isActive && fs ? { display: "none" } : undefined}
+                className="relative w-full h-full snap-start snap-always"
+              />
+            );
+          }
           return (
             <section
               key={vid}
@@ -986,7 +997,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
               )}
 
               {/* 顶部 */}
-              {!fs && !clean && mode === "context" ? (
+              {isActive && !fs && !clean && mode === "context" ? (
                 isDesktop ? (
                   <div className="desktop-context-header">
                     <button onClick={onBack} aria-label="返回"><IBack size={17} /></button>
@@ -1004,7 +1015,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
               {/* 右侧操作栏（移动端）：收藏 / 评论 / 全屏 / 分享
                   颜色写死不跟主题走：浅色主题下这些字必须仍是白色 */}
-              {!fs && !clean && !isDesktop && (
+              {isActive && !fs && !clean && !isDesktop && (
                 <div className="absolute right-3 z-20 flex flex-col items-center gap-[16px]"
                   style={{ bottom: `calc(var(--sab, 0px) + ${bottomInset + 92}px)` }}>
                   <button onClick={onFav} className="flex flex-col items-center gap-1 pressable" aria-pressed={isFav(curId)} aria-label="收藏">
@@ -1027,7 +1038,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
               )}
 
               {/* 右侧操作栏（桌面） */}
-              {!fs && isDesktop && (
+              {isActive && !fs && isDesktop && (
               <div className="absolute z-20 flex flex-col items-center desktop-social">
                 <div className="desktop-browse-inline">
                   <button onClick={() => go(-1)} disabled={index === 0} aria-label="上一个" title="上一个 ↑">
@@ -1073,7 +1084,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
               )}
 
               {/* 桌面：左下信息 */}
-              {!fs && isDesktop && (
+              {isActive && !fs && isDesktop && (
               <div className="desktop-video-meta">
                 <div className="flex items-center gap-2">
                   <span className="text-[15px] font-bold text-white tsh truncate">@{meta.author}</span>
@@ -1101,7 +1112,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
               )}
 
               {/* 移动端：标题 + 详情标签 + 进度线（清屏 clean 模式下隐藏） */}
-              {!fs && !clean && !isDesktop && (
+              {isActive && !fs && !clean && !isDesktop && (
                 <div className="absolute inset-x-0 z-20" style={{ bottom: `calc(var(--sab, 0px) + ${bottomInset}px)` }}>
                   <div className="absolute inset-x-0 bottom-0 h-[190px] pointer-events-none"
                     style={{ background: "linear-gradient(0deg, rgba(0,0,0,.82) 0%, rgba(0,0,0,.42) 45%, transparent 100%)" }} />

@@ -2,6 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   CommentPage, Detail, Paged, PlayInfo, Post, RankItem, User, VideoCard,
 } from "./types";
+import {
+  sanitizeDetail,
+  sanitizePlayInfo,
+  sanitizePosts,
+  sanitizeRankItems,
+  sanitizeVideoCards,
+  postSchema,
+} from "./schemas";
 
 /* ── 运行环境 ───────────────────────────────────────────── */
 
@@ -77,20 +85,46 @@ export const api = {
   logout: () => call<{ ok: boolean }>("api_logout"),
   me: () => call<User>("api_me"),
 
-  feed: (page = 1, size = 20) => call<Paged<VideoCard>>("api_feed", { page, size }),
-  category: (cate: string, page = 1, size = 20) =>
-    call<Paged<VideoCard>>("api_category", { cate, page, size }),
-  rank: (kind: "hot" | "recommend" | "potential") =>
-    call<{ type: string; items: RankItem[] }>("api_rank", { kind }),
-  search: (q: string, page = 1, size = 20) =>
-    call<{ items: VideoCard[]; pagination: Paged<VideoCard>["pagination"]; keyword: string }>(
+  feed: async (page = 1, size = 20) => {
+    const raw = await call<Paged<VideoCard>>("api_feed", { page, size });
+    return sanitizeVideoCards(raw);
+  },
+  category: async (cate: string, page = 1, size = 20) => {
+    const raw = await call<Paged<VideoCard>>("api_category", { cate, page, size });
+    return sanitizeVideoCards(raw);
+  },
+  rank: async (kind: "hot" | "recommend" | "potential") => {
+    const raw = await call<{ type: string; items: RankItem[] }>("api_rank", { kind });
+    return { type: raw?.type || kind, items: sanitizeRankItems(raw?.items) };
+  },
+  search: async (q: string, page = 1, size = 20) => {
+    const raw = await call<{ items: VideoCard[]; pagination: Paged<VideoCard>["pagination"]; keyword: string }>(
       "api_search", { q, page, size },
-    ),
-  posts: (page = 1, size = 20) => call<Paged<Post>>("api_posts", { page, size }),
-  post: (id: number) => call<Post & { content?: string; video_url?: string }>("api_post", { id }),
+    );
+    const sanitized = sanitizeVideoCards({ items: raw?.items, pagination: raw?.pagination });
+    return {
+      keyword: raw?.keyword || q,
+      items: sanitized.items,
+      pagination: sanitized.pagination,
+    };
+  },
+  posts: async (page = 1, size = 20) => {
+    const raw = await call<Paged<Post>>("api_posts", { page, size });
+    return sanitizePosts(raw);
+  },
+  post: async (id: number) => {
+    const raw = await call<Post & { content?: string; video_url?: string }>("api_post", { id });
+    return postSchema.parse(raw);
+  },
 
-  video: (id: number) => call<Detail>("api_video", { id }),
-  play: (id: number, ep: number) => call<PlayInfo>("api_play", { id, ep }),
+  video: async (id: number) => {
+    const raw = await call<Detail>("api_video", { id });
+    return sanitizeDetail(raw);
+  },
+  play: async (id: number, ep: number) => {
+    const raw = await call<PlayInfo>("api_play", { id, ep });
+    return sanitizePlayInfo(raw);
+  },
 
   comments: (id: number, ep: number, page = 1, size = 20) =>
     call<CommentPage>("api_comments", { id, ep, page, size }),

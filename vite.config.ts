@@ -27,5 +27,13 @@ export default defineConfig({
     target: "es2021",
     minify: "esbuild",
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ["react", "react-dom", "zustand", "@tanstack/react-query"],
+          media: ["hls.js"],
+        },
+      },
+    },
   },
 });

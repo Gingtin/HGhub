@@ -151,7 +151,7 @@ export function Img({ src, alt = "", className = "", eager = false, raw = false 
     <div className={`absolute inset-0 overflow-hidden ${className}`}>
       {!ok && !err && <div className="absolute inset-0 shimmer" />}
       {err && <div className="absolute inset-0 bg-s3" />}
-      <img src={url} alt={alt} loading={eager ? "eager" : "lazy"} onLoad={() => setOk(true)} onError={() => setErr(true)}
+      <img src={url} alt={alt} loading={eager ? "eager" : "lazy"} decoding="async" onLoad={() => setOk(true)} onError={() => setErr(true)}
         className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${ok ? "opacity-100" : "opacity-0"}`} draggable={false} />
     </div>
   );

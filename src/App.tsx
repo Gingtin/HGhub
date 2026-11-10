@@ -1,21 +1,32 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore, type Page, type Tab } from "./store";
 import { isMobile, selfTest } from "./api";
 import { addPluginListener, invoke } from "@tauri-apps/api/core";
 import { runBack } from "./back";
 import Home from "./pages/Home";
-import Search, { RankPage } from "./pages/Search";
-import Category, { ChannelPage } from "./pages/Category";
-import Profile from "./pages/Profile";
-import SettingsPage from "./pages/Settings";
 import Feed from "./components/Feed";
-import { PostsPage, PostDetail } from "./pages/Posts";
 import LoginModal from "./components/LoginModal";
 import { ToastHost } from "./components/ui";
 import { DesktopRail, DesktopTitleBar } from "./components/DesktopChrome";
 import ResizeHandles from "./components/ResizeHandles";
 import { tracePlayback } from "./playbackDiagnostics";
 import { IGrid, IGridF, IHome, IHomeF, ISearch, IUser, IUserF, Logo } from "./icons";
+
+/* 路由级 React.lazy 动态拆包，减小初始包体积与解析执行耗时 */
+const Search = lazy(() => import("./pages/Search"));
+const RankPage = lazy(() => import("./pages/Search").then((m) => ({ default: m.RankPage })));
+const Category = lazy(() => import("./pages/Category"));
+const ChannelPage = lazy(() => import("./pages/Category").then((m) => ({ default: m.ChannelPage })));
+const Profile = lazy(() => import("./pages/Profile"));
+const SettingsPage = lazy(() => import("./pages/Settings"));
+const PostsPage = lazy(() => import("./pages/Posts").then((m) => ({ default: m.PostsPage })));
+const PostDetail = lazy(() => import("./pages/Posts").then((m) => ({ default: m.PostDetail })));
+
+const PageFallback = () => (
+  <div className="absolute inset-0 flex items-center justify-center bg-bg">
+    <div className="w-8 h-8 spinner" />
+  </div>
+);
 
 /* ============ 底部标签栏（Android）—— 细瘦纯文字、低侵入 ============ */
 function TabBar() {
@@ -65,19 +76,20 @@ function TabBar() {
 function StackPage({ page, onBack, wide, top, bottomInset }: {
   page: Page; onBack: () => void; wide: boolean; top: boolean; bottomInset: number;
 }) {
-  if (page.kind === "feed") {
-    return (
-      <Feed videoIds={page.videoIds} startIndex={page.index} title={page.title} kind={page.feedKind || "video"}
-        startEp={page.startEp} startTime={page.startTime}
-        mode="context" active={top} bottomInset={bottomInset} onBack={onBack} />
-    );
-  }
-  if (page.kind === "channel") return <ChannelPage cate={page.cate} name={page.name} onBack={onBack} wide={wide} />;
-  if (page.kind === "ranks") return <RankPage onBack={onBack} wide={wide} />;
-  if (page.kind === "settings") return <SettingsPage onBack={onBack} wide={wide} />;
-  if (page.kind === "posts") return <PostsPage onBack={onBack} wide={wide} />;
-  if (page.kind === "post") return <PostDetail id={page.id} onBack={onBack} active={top} />;
-  return null;
+  return (
+    <Suspense fallback={<PageFallback />}>
+      {page.kind === "feed" && (
+        <Feed videoIds={page.videoIds} startIndex={page.index} title={page.title} kind={page.feedKind || "video"}
+          startEp={page.startEp} startTime={page.startTime}
+          mode="context" active={top} bottomInset={bottomInset} onBack={onBack} />
+      )}
+      {page.kind === "channel" && <ChannelPage cate={page.cate} name={page.name} onBack={onBack} wide={wide} />}
+      {page.kind === "ranks" && <RankPage onBack={onBack} wide={wide} />}
+      {page.kind === "settings" && <SettingsPage onBack={onBack} wide={wide} />}
+      {page.kind === "posts" && <PostsPage onBack={onBack} wide={wide} />}
+      {page.kind === "post" && <PostDetail id={page.id} onBack={onBack} active={top} />}
+    </Suspense>
+  );
 }
 
 /* ============ 应用主体 ============ */
@@ -129,9 +141,9 @@ function AppBody() {
       {!isMobile && <DesktopRail collapsed={collapsed} />}
       <div ref={mainRef} className="relative flex-1 min-w-0 overflow-hidden win-main">
         <div className={vis("home")}><Home active={pageActive && tab === "home"} bottomInset={bottomInset} /></div>
-        <div className={vis("search")}><Search active={pageActive && tab === "search"} wide={wide} /></div>
-        <div className={vis("category")}><Category wide={wide} active={pageActive && tab === "category"} /></div>
-        <div className={vis("profile")}><Profile wide={wide} /></div>
+        <div className={vis("search")}><Suspense fallback={<PageFallback />}><Search active={pageActive && tab === "search"} wide={wide} /></Suspense></div>
+        <div className={vis("category")}><Suspense fallback={<PageFallback />}><Category wide={wide} active={pageActive && tab === "category"} /></Suspense></div>
+        <div className={vis("profile")}><Suspense fallback={<PageFallback />}><Profile wide={wide} /></Suspense></div>
 
         {stack.map((p, i) => (
           <div key={p.key} className="absolute inset-0 z-30 bg-bg a-page-in" style={{ boxShadow: "-18px 0 40px rgba(0,0,0,.5)" }}>
@@ -201,9 +213,9 @@ function ShellInner({ collapsed, theater }: { collapsed: boolean; theater: boole
       {!theater && <DesktopRail collapsed={collapsed} />}
       <div ref={mainRef} className={`relative flex-1 min-w-0 overflow-hidden win-main ${theater ? "is-theater-main" : ""}`}>
         <div className={vis("home")}><Home active={pageActive && tab === "home"} bottomInset={14} /></div>
-        <div className={vis("search")}><Search active={pageActive && tab === "search"} wide={wide} /></div>
-        <div className={vis("category")}><Category wide={wide} active={pageActive && tab === "category"} /></div>
-        <div className={vis("profile")}><Profile wide={wide} /></div>
+        <div className={vis("search")}><Suspense fallback={<PageFallback />}><Search active={pageActive && tab === "search"} wide={wide} /></Suspense></div>
+        <div className={vis("category")}><Suspense fallback={<PageFallback />}><Category wide={wide} active={pageActive && tab === "category"} /></Suspense></div>
+        <div className={vis("profile")}><Suspense fallback={<PageFallback />}><Profile wide={wide} /></Suspense></div>
         {stack.map((p, i) => (
           <div key={p.key} className="absolute inset-0 z-30 bg-bg win-page-in" style={{ boxShadow: "-18px 0 40px rgba(0,0,0,.5)" }}>
             <StackPage page={p} onBack={pop} wide={wide} top={i === stack.length - 1} bottomInset={14} />

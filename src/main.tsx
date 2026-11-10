@@ -1,7 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { AppProvider } from "./store";
+import { queryClient } from "./queryClient";
 import { invoke } from "@tauri-apps/api/core";
 import "./index.css";
 import { initPlaybackLog, installPlaybackPageEvents } from "./playbackDiagnostics";
@@ -22,8 +24,10 @@ window.addEventListener("unhandledrejection", (e) => {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <AppProvider>
-      <App />
-    </AppProvider>
+    <QueryClientProvider client={queryClient}>
+      <AppProvider>
+        <App />
+      </AppProvider>
+    </QueryClientProvider>
   </React.StrictMode>,
 );

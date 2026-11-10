@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, cover, fmt, isMobile } from "../api";
+import { fetchPostDetail } from "../queries";
 import type { Post } from "../types";
 import { useStore } from "../store";
 import { Empty, Img } from "../components/ui";
@@ -101,7 +102,7 @@ export function PostDetail({ id, onBack, active = true }: { id: number; onBack: 
 
   useEffect(() => {
     let alive = true;
-    api.post(id)
+    fetchPostDetail(id)
       .then((p) => { if (alive) setPost(p); })
       .catch((e) => { if (alive) setErr((e as Error).message || "加载失败"); });
     return () => { alive = false; };

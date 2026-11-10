@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, fmt } from "../api";
+import { fetchRanks } from "../queries";
 import type { RankItem, VideoCard } from "../types";
 import { useStore } from "../store";
 import { Masonry, RankRow } from "../components/cards";
@@ -157,8 +158,8 @@ export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    api.rank(tab)
-      .then((res) => { if (alive) setItems(res?.items || []); })
+    fetchRanks(tab)
+      .then((data) => { if (alive) setItems(data); })
       .catch((e) => { if (alive) { setItems([]); toast((e as Error).message || "榜单加载失败", "info"); } })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
