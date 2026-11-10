@@ -1,6 +1,4 @@
-# HGhub Android 本地一键打包脚本
 param(
-    [ValidateSet("release", "debug", "all")]
     [string]$Mode = "release"
 )
 

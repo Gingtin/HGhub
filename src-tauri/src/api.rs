@@ -472,7 +472,8 @@ pub async fn api_video(state: State<'_, Api>, id: i64) -> Result<Value, String> 
 
 /// 新版播放接口返回 `streams.{main,hevc,preview}`，旧接口的 `video_url` 现在恒为空串。
 /// 这里把新字段回填到 `video_url` / `video_url_hevc`，前端和自检继续按原字段取流。
-fn normalize_play_info(info: &mut Value) {
+/// 同时补齐 id 和 ep_num 字段，防止前端反序列化时出现字段缺失。
+fn normalize_play_info(info: &mut Value, id: i64, ep: u32) {
     fn non_empty(v: Option<&Value>) -> Option<String> {
         v.and_then(|x| x.as_str())
             .filter(|s| !s.is_empty())
@@ -488,6 +489,8 @@ fn normalize_play_info(info: &mut Value) {
             }
         }
     }
+    obj.entry("id").or_insert_with(|| json!(id));
+    obj.entry("ep_num").or_insert_with(|| json!(ep));
 }
 
 fn has_play_url(info: &Value) -> bool {
@@ -503,7 +506,7 @@ pub async fn api_play(state: State<'_, Api>, id: i64, ep: u32) -> Result<Value, 
         .post(&format!("/api/videos/{id}/episodes/{ep}/playback"), Some(json!({})))
         .await
         .map(|mut info| {
-            normalize_play_info(&mut info);
+            normalize_play_info(&mut info, id, ep);
             info
         });
     if let Ok(info) = &primary {
@@ -516,7 +519,7 @@ pub async fn api_play(state: State<'_, Api>, id: i64, ep: u32) -> Result<Value, 
         .await
     {
         Ok(mut legacy) => {
-            normalize_play_info(&mut legacy);
+            normalize_play_info(&mut legacy, id, ep);
             if has_play_url(&legacy) || primary.is_err() {
                 Ok(legacy)
             } else {
