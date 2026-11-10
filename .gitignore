@@ -8,6 +8,7 @@ dist-ssr/
 test-results/
 src-tauri/target/
 src-tauri/gen/
+build-apk/
 *.local
 
 # 编辑器 / 系统
