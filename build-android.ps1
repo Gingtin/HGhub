@@ -31,7 +31,12 @@ if (-not $env:NDK_HOME) {
     $env:NDK_HOME = "C:\Users\Gingtin\AppData\Local\Android\Sdk\ndk\28.2.13676358"
 }
 
-$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+$ndkBin = "$env:NDK_HOME\toolchains\llvm\prebuilt\windows-x86_64\bin"
+$env:CC_aarch64_linux_android = "$ndkBin\aarch64-linux-android24-clang.cmd"
+$env:CXX_aarch64_linux_android = "$ndkBin\aarch64-linux-android24-clang++.cmd"
+$env:AR_aarch64_linux_android = "$ndkBin\llvm-ar.exe"
+$env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = "$ndkBin\aarch64-linux-android24-clang.cmd"
+$env:PATH = "$ndkBin;$env:JAVA_HOME\bin;$env:PATH"
 
 Write-Host "=== HGhub Android 打包环境 ===" -ForegroundColor Cyan
 Write-Host "JAVA_HOME:    $env:JAVA_HOME"
