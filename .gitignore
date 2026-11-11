@@ -7,8 +7,9 @@ dist/
 dist-ssr/
 test-results/
 src-tauri/target/
-src-tauri/gen/
 build-apk/
+*.apk
+*.aab
 *.local
 
 # 编辑器 / 系统
