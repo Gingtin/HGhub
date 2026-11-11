@@ -687,26 +687,14 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
     if (cancelled || g.mode !== "idle") return;
     const moveDist = e ? Math.hypot(e.clientX - g.x, e.clientY - g.y) : 0;
-    if (Date.now() - g.t < 260 && moveDist < 16) {
-      const now = Date.now();
-      if (now - lastTapRef.current.time < 280) {
-        // 双击屏幕：切换暂停 / 播放
-        clearTapTimer();
-        lastTapRef.current.time = 0;
-        videoRef.current?.toggle();
-      } else {
-        // 单击屏幕：若处于暂停状态则立刻起播；若正常播放中则切换清屏模式
-        lastTapRef.current.time = now;
-        clearTapTimer();
-        lastTapRef.current.timer = window.setTimeout(() => {
-          lastTapRef.current.timer = null;
-          if (paused) {
-            videoRef.current?.play();
-          } else {
-            setClean((c) => !c);
-          }
-        }, 220) as unknown as number;
+    if (Date.now() - g.t < 320 && moveDist < 16) {
+      // 若处于清屏模式，单击屏幕任意位置优先退出清屏
+      if (clean) {
+        setClean(false);
+        return;
       }
+      // 单击屏幕画面：直接切换 播放 / 暂停（主流短剧与短视频通用交互，响应即时）
+      videoRef.current?.toggle();
     }
   };
 
@@ -872,9 +860,9 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                         videoRef.current?.play();
                       }}
                     >
-                      <span className="w-[68px] h-[68px] rounded-full flex items-center justify-center backdrop-blur-md pressable shadow-2xl transition-transform active:scale-90"
-                        style={{ background: "rgba(0,0,0,.6)", boxShadow: "inset 0 0 0 1.5px rgba(255,255,255,.2)" }}>
-                        <IPlayF size={30} className="text-white ml-1 drop-shadow" />
+                      <span className="w-[72px] h-[72px] rounded-full flex items-center justify-center backdrop-blur-md pressable shadow-2xl transition-transform a-scale-in active:scale-90"
+                        style={{ background: "rgba(0,0,0,.62)", boxShadow: "inset 0 0 0 1.5px rgba(255,255,255,.25), 0 8px 32px rgba(0,0,0,.6)" }}>
+                        <IPlayF size={34} className="text-white ml-1 drop-shadow" />
                       </span>
                     </div>
                   )}
@@ -1136,6 +1124,30 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                     {/* 右侧实用看剧操作栏（美观、实用、无社交干扰） */}
                     <div className="absolute right-3.5 z-20 flex flex-col items-center gap-[15px] pointer-events-auto"
                       style={{ bottom: `calc(var(--sab, 0px) + ${bottomInset + 56}px)` }}>
+                      {/* 播放 / 暂停 快捷控制 */}
+                      <button
+                        onClick={() => videoRef.current?.toggle()}
+                        className="flex flex-col items-center gap-1 pressable"
+                        aria-label={paused ? "播放" : "暂停"}
+                      >
+                        <div
+                          className="w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md transition-all shadow-lg"
+                          style={{
+                            background: paused ? "rgba(96, 205, 255, 0.28)" : "rgba(18, 20, 26, 0.55)",
+                            border: paused ? "1px solid rgba(96, 205, 255, 0.55)" : "1px solid rgba(255, 255, 255, 0.16)",
+                            boxShadow: paused ? "0 0 16px rgba(96, 205, 255, 0.4)" : "0 2px 8px rgba(0,0,0,0.3)",
+                          }}>
+                          {paused ? (
+                            <IPlayF size={22} className="text-primary ml-0.5 drop-shadow" />
+                          ) : (
+                            <IPauseF size={20} className="text-white drop-shadow" />
+                          )}
+                        </div>
+                        <span className={`text-[10.5px] font-semibold hg-ov-shadow ${paused ? "text-primary font-bold" : "hg-ink-2"}`}>
+                          {paused ? "播放" : "暂停"}
+                        </span>
+                      </button>
+
                       {/* 选集 */}
                       {episodes.length > 0 && (
                         <button onClick={() => setPanel("episodes")} className="flex flex-col items-center gap-1 pressable" aria-label="选集">
@@ -1269,11 +1281,13 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                         )}
                       </div>
 
-                      {/* 底部迷你进度条 */}
-                      <div className="relative pb-2">
+                      {/* 底部播放进度条与控制 */}
+                      <div className="relative pb-1">
                         <MobileFeedMiniBar
                           duration={duration}
                           rotated={rotated}
+                          paused={paused}
+                          onTogglePlay={() => videoRef.current?.toggle()}
                           onSeek={(target) => {
                             dispatchMachine({ type: "SEEKING", target });
                             timeRef.current = target;

@@ -6,11 +6,13 @@ import { IBoltF, IPauseF, IPlayF } from "../icons";
 type MobileFeedMiniBarProps = {
   duration: number;
   rotated?: boolean;
+  paused?: boolean;
+  onTogglePlay?: () => void;
   onSeek: (target: number) => void;
   onTrace?: (event: string, data?: Record<string, unknown>) => void;
 };
 
-export function MobileFeedMiniBar({ duration, rotated, onSeek, onTrace }: MobileFeedMiniBarProps) {
+export function MobileFeedMiniBar({ duration, rotated, paused = false, onTogglePlay, onSeek, onTrace }: MobileFeedMiniBarProps) {
   const { time } = usePlaybackProgress();
   const [barPct, setBarPct] = useState<number | null>(null);
   const barScrub = useRef(false);
@@ -63,18 +65,60 @@ export function MobileFeedMiniBar({ duration, rotated, onSeek, onTrace }: Mobile
   const barProgress = barPct ?? (duration ? time / duration : 0);
 
   return (
-    <div className="mx-4 mt-1.5 relative" style={{ height: 22, touchAction: "none" }}
-      onPointerDown={onBarDown} onPointerMove={onBarMove} onPointerUp={onBarUp} onPointerCancel={onBarUp}>
-      <div className={`absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-full transition-all ${barPct !== null ? "h-[5px]" : "h-[2.5px]"}`}
-        style={{ background: "rgba(255,255,255,.3)" }}>
-        <div className="h-full rounded-full bg-white"
-          style={{ width: `${barProgress * 100}%`, transition: barPct !== null ? "none" : "width .25s linear" }} />
-      </div>
-      {barPct !== null && (
-        <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2.5 py-1 rounded-md hg-chip-strong backdrop-blur-md text-[12px] font-bold tabular-nums whitespace-nowrap">
-          {fmtTime(barPct * (duration || 0))} / {fmtTime(duration)}
-        </div>
+    <div className="flex items-center gap-2.5 px-4" style={{ height: 32 }}>
+      {onTogglePlay && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onTogglePlay();
+          }}
+          className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-white/20 hover:bg-white/30 backdrop-blur-md text-white border border-white/25 active:scale-90 transition-all shadow-md pressable"
+          aria-label={paused ? "播放" : "暂停"}
+          title={paused ? "播放" : "暂停"}
+        >
+          {paused ? <IPlayF size={14} className="ml-0.5 text-primary" /> : <IPauseF size={13} className="text-white" />}
+        </button>
       )}
+
+      {/* 进度拖动槽 */}
+      <div
+        className="flex-1 relative h-full flex items-center cursor-pointer"
+        style={{ touchAction: "none" }}
+        onPointerDown={onBarDown}
+        onPointerMove={onBarMove}
+        onPointerUp={onBarUp}
+        onPointerCancel={onBarUp}
+      >
+        <div
+          className={`relative w-full rounded-full transition-all ${barPct !== null ? "h-[5px]" : "h-[3px]"}`}
+          style={{ background: "rgba(255,255,255,.3)" }}
+        >
+          <div
+            className="h-full rounded-full bg-primary"
+            style={{ width: `${barProgress * 100}%`, transition: barPct !== null ? "none" : "width .25s linear" }}
+          />
+          {/* 拖动手柄白点 */}
+          <span
+            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md transition-transform pointer-events-none"
+            style={{
+              left: `calc(${barProgress * 100}% - 7px)`,
+              transform: barPct !== null ? "scale(1.25)" : "scale(0.85)",
+            }}
+          />
+        </div>
+
+        {barPct !== null && (
+          <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2.5 py-1 rounded-md hg-chip-strong backdrop-blur-md text-[12px] font-bold tabular-nums whitespace-nowrap shadow-lg">
+            {fmtTime(barPct * (duration || 0))} / {fmtTime(duration)}
+          </div>
+        )}
+      </div>
+
+      {/* 实时时间码 */}
+      <span className="shrink-0 text-[11px] font-semibold text-white/90 tabular-nums drop-shadow-sm select-none">
+        {fmtTime(barPct !== null ? barPct * (duration || 0) : time)} / {fmtTime(duration)}
+      </span>
     </div>
   );
 }
