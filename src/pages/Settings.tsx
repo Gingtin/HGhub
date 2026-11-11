@@ -4,15 +4,22 @@ import { useStore } from "../store";
 import { Modal, Toggle } from "../components/ui";
 import LinePicker from "../components/LinePicker";
 import { copyPlaybackLog, initPlaybackLog, setPlaybackLog, usePlaybackLog } from "../playbackDiagnostics";
-import { IBack, IBoltF, IBroom, IChevR, IGrid, IInfo, ILink, ILockF, IMoon, IRefresh, ISettings, IStarF, ISun, IVolMute } from "../icons";
+import { IBack, IBoltF, IBroom, IChevR, IClock, IGrid, IInfo, ILink, ILockF, IMoon, IPlayF, IRefresh, ISettings, IStarF, ISun, IVolMute } from "../icons";
 
 /* 独立设置页：线路 / 外观 / 播放 / 本地数据 / 清理缓存 / 网络诊断 / 关于
    入口：Windows 侧栏「设置」、Android「我的」右上角齿轮 */
 export default function Settings({ onBack, wide }: { onBack: () => void; wide: boolean }) {
-  const { theme, setTheme, favs, history, muteOnStartup, setMuteOnStartup, homeMode, setHomeMode, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity, toast } = useStore();
+  const {
+    theme, setTheme, favs, history, muteOnStartup, setMuteOnStartup, homeMode, setHomeMode,
+    strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity, toast,
+    autoNext, setAutoNext, screenDim, setScreenDim, sleepTimerMinutes, sleepTimerDeadline, setSleepTimer,
+    exportUserData, importUserData,
+  } = useStore();
   const [about, setAbout] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
   const [lineOpen, setLineOpen] = useState(false);
   const [lineBase, setLineBase] = useState("");
   const [checking, setChecking] = useState(false);
@@ -102,6 +109,28 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
                     <div className="font-semibold text-amber-300 mt-0.5">骁龙8 Gen 3 硬件硬解</div>
                   </div>
                 </div>
+
+                {/* AMOLED 深度夜光调光滑杆 */}
+                <div className="mt-3 pt-3 border-t border-white/5">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[12px] font-semibold text-on">AMOLED 极致夜光护眼调光</span>
+                    <span className="text-[11px] font-bold text-primary tabular-nums">
+                      {screenDim === 0 ? "原生亮度" : `已压暗 ${Math.round(screenDim * 100)}%`}
+                    </span>
+                  </div>
+                  <div className="text-[10.5px] text-mut mb-2 leading-relaxed">
+                    在系统最低亮度基础上阻光，全黑卧室看剧不刺眼，纯黑像素完全熄灭，省电护眼。
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="0.65"
+                    step="0.05"
+                    value={screenDim}
+                    onChange={(e) => setScreenDim(parseFloat(e.target.value))}
+                    className="w-full h-1.5 bg-s3 rounded-lg appearance-none cursor-pointer accent-primary"
+                  />
+                </div>
               </div>
             </Section>
           )}
@@ -134,12 +163,75 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
             </div>
 
             <div className="flex items-center gap-3 px-3.5 py-3">
+              <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IPlayF size={15} /></span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12.5px] text-on font-medium">自动连播下一集</div>
+                <div className="text-[10.5px] text-mut mt-0.5">每集播完后自动无缝切入下一集，连贯追剧免去手动选集</div>
+              </div>
+              <Toggle on={autoNext} onChange={setAutoNext} label="自动连播下一集" />
+            </div>
+
+            <div className="flex items-center gap-3 px-3.5 py-3">
               <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IVolMute size={16} /></span>
               <div className="flex-1 min-w-0">
                 <div className="text-[12.5px] text-on">启动时静音</div>
                 <div className="text-[10.5px] text-mut">默认开启，每次启动均静音；关闭后记住上次静音状态。下次启动生效。</div>
               </div>
               <Toggle on={muteOnStartup} onChange={setMuteOnStartup} label="启动时静音" />
+            </div>
+
+            <div className="flex flex-col gap-2 px-3.5 py-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IClock size={16} /></span>
+                  <div>
+                    <div className="text-[12.5px] text-on font-medium">睡眠定时关闭</div>
+                    <div className="text-[10.5px] text-mut mt-0.5">
+                      {sleepTimerMinutes === null
+                        ? "未开启 · 适合睡前观看，时间到自动暂停播放并省电"
+                        : sleepTimerMinutes === -1
+                        ? "已开启：当前集数播放完毕后自动暂停"
+                        : `已开启：将在约 ${Math.max(1, Math.ceil(((sleepTimerDeadline || 0) - Date.now()) / 60000))} 分钟后暂停`}
+                    </div>
+                  </div>
+                </div>
+                {sleepTimerMinutes !== null && (
+                  <button
+                    type="button"
+                    onClick={() => { setSleepTimer(null); toast("已取消睡眠定时", "ok"); }}
+                    className="px-2.5 py-1 rounded-full bg-danger/20 text-danger text-[11px] font-semibold pressable shrink-0"
+                  >
+                    取消定时
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-6 gap-1.5 mt-1">
+                {[
+                  { label: "关闭", val: null },
+                  { label: "15分", val: 15 },
+                  { label: "30分", val: 30 },
+                  { label: "45分", val: 45 },
+                  { label: "60分", val: 60 },
+                  { label: "本集完", val: -1 },
+                ].map((item) => {
+                  const active = sleepTimerMinutes === item.val;
+                  return (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => {
+                        setSleepTimer(item.val);
+                        toast(item.val ? `已设置睡眠定时：${item.label}` : "已关闭睡眠定时", "ok");
+                      }}
+                      className={`py-1.5 rounded-lg text-[11px] font-semibold transition-all pressable ${
+                        active ? "bg-primary text-on-primary shadow-xs" : "bg-s3 text-mut hover:text-on"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </Section>
 
@@ -149,6 +241,37 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
               <div className="flex-1">
                 <div className="text-[12.5px] text-on">追剧收藏</div>
                 <div className="text-[10.5px] text-mut">{favs.length} 部收藏 · {history.length} 条观看记录</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 px-3.5 py-3">
+              <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><ILink size={16} /></span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12.5px] text-on font-medium">数据备份与迁移</div>
+                <div className="text-[10.5px] text-mut mt-0.5">将追剧收藏与观看进度导出为 JSON 离线备份，换机无缝恢复</div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const json = exportUserData();
+                    try {
+                      await navigator.clipboard?.writeText(json);
+                      toast("备份数据已复制到剪贴板", "ok");
+                    } catch {
+                      toast("请在弹窗中复制备份数据", "info");
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-s3 hover:bg-s4 text-primary text-[11px] font-semibold pressable"
+                >
+                  导出备份
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setImportText(""); setImportOpen(true); }}
+                  className="px-2.5 py-1 rounded-lg bg-s3 hover:bg-s4 text-on/80 text-[11px] font-semibold pressable"
+                >
+                  导入恢复
+                </button>
               </div>
             </div>
             <button onClick={() => setClearOpen(true)} className="w-full flex items-center gap-3 px-3.5 py-3 text-left pressable">
@@ -322,6 +445,40 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
               toast("缓存已清理", "ok");
             }} className="flex-1 h-9 rounded-(--r-ctl) bg-primary text-[12.5px] font-semibold text-on-primary pressable disabled:opacity-60">
               {clearing ? "清理中…" : "确定清理"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={importOpen} onClose={() => setImportOpen(false)} width={350}>
+        <div className="p-5">
+          <div className="text-[14.5px] font-bold text-on">导入数据恢复</div>
+          <p className="text-[11.5px] text-mut mt-1 leading-relaxed">
+            请粘贴先前导出的备份 JSON 内容。导入采用智能合并，不会冲掉当前已有的追剧记录。
+          </p>
+          <textarea
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+            placeholder='粘贴导出的备份内容 {"version":1, "favs":[...], ...}'
+            rows={5}
+            className="w-full mt-3 p-2.5 rounded-xl bg-s3/80 border border-white/10 text-[11px] text-on placeholder-dim outline-none font-mono"
+          />
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => setImportOpen(false)} className="flex-1 h-9 rounded-(--r-ctl) bg-s3 text-[12px] text-on/80 pressable">取消</button>
+            <button
+              onClick={() => {
+                if (!importText.trim()) { toast("请先粘贴备份内容", "info"); return; }
+                const res = importUserData(importText);
+                if (res.ok) {
+                  setImportOpen(false);
+                  toast(`成功恢复并合并 ${res.count} 条记录`, "ok");
+                } else {
+                  toast("备份数据解析失败，请检查格式", "info");
+                }
+              }}
+              className="flex-1 h-9 rounded-(--r-ctl) bg-primary text-[12px] font-bold text-on-primary pressable"
+            >
+              确定导入
             </button>
           </div>
         </div>

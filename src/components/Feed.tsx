@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { api, cover, fmt, fmtTime, isMobile } from "../api";
+import { api, cover, fmt, fmtTime, hostOf, isMobile } from "../api";
 import { fetchPlayInfo, fetchPostDetail, fetchVideoDetail } from "../queries";
 import type { Detail, Episode, Post, VideoCard } from "../types";
 import { useStore } from "../store";
@@ -14,7 +14,7 @@ import { INITIAL_MACHINE_STATE, playerStateReducer } from "../playerStateMachine
 import { ArticlePanel, CommentsPanel, EpisodesPanel } from "./Panels";
 import { pushBackHandler } from "../back";
 import {
-  IBack, IBoltF, IChevR, IChevronDown, IChevronUp, IClose, ICommentF, ICompress, IExpand, IFileText,
+  IBack, IBoltF, IChevR, IChevronDown, IChevronUp, IClock, IClose, ICommentF, ICompress, IExpand, IFileText,
   ILink, IList, ILockF, IPauseF, IPip, IPlayF, IPlus, IRotate, ISearch, IStar, IStarF, IVol, IVolMute,
 } from "../icons";
 
@@ -48,7 +48,10 @@ function pruneRecord<T>(record: Record<string | number, T>, keepKey: string | nu
 
 export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind = "video", active, bottomInset, onBack, onNearEnd, startEp, startTime }: Props) {
   const store = useStore();
-  const { isFav, toggleFavLocal, toggleFollowLocal, muted, setMuted, volume, setVolume, toast, addHistory, user, setLoginOpen } = store;
+  const {
+    isFav, toggleFavLocal, toggleFollowLocal, muted, setMuted, volume, setVolume, toast,
+    addHistory, user, setLoginOpen, autoNext, screenDim, sleepTimerMinutes, sleepTimerDeadline, setSleepTimer,
+  } = store;
   const isDesktop = !isMobile;
 
   const boxRef = useRef<HTMLDivElement>(null);
@@ -68,6 +71,49 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const waiting = machine.status === "loading" || machine.status === "buffering";
   const err = machine.status === "error" ? (machine.error || "播放异常") : "";
   const [controlsLocked, setControlsLocked] = useState(false);
+
+  /* 睡眠定时器倒计时监听 */
+  useEffect(() => {
+    if (!sleepTimerDeadline || !active) return;
+    const id = window.setInterval(() => {
+      if (Date.now() >= sleepTimerDeadline) {
+        videoRef.current?.pause();
+        setSleepTimer(null);
+        toast("睡眠定时已生效，已暂停播放", "info");
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [sleepTimerDeadline, active, setSleepTimer, toast]);
+
+  /* 故障备用线路智能轮询切换 */
+  const [switchingLine, setSwitchingLine] = useState(false);
+  const handleFailoverLine = useCallback(async () => {
+    if (switchingLine) return;
+    setSwitchingLine(true);
+    try {
+      const state = await api.lineState();
+      const mirrorsRes = await api.lineMirrors().catch(() => null);
+      const mirrors = mirrorsRes?.items || [];
+      const fixedUrls = (state.fixed || []).map((x) => x.url);
+      const mirrorUrls = mirrors.map((m) => m.url);
+      const allLines = Array.from(new Set([...fixedUrls, ...mirrorUrls]));
+      const curIdx = allLines.findIndex((u) => u === state.base);
+      const nextLine = allLines[(curIdx + 1) % allLines.length] || allLines[0];
+      if (nextLine && nextLine !== state.base) {
+        await api.lineSet(nextLine);
+        toast(`已切换至备用线路：${hostOf(nextLine)}`, "ok");
+        dispatchMachine({ type: "RETRY" });
+        setPlayTry((n) => n + 1);
+        videoRef.current?.reload();
+      } else {
+        toast("暂无其他可用备用线路", "info");
+      }
+    } catch (e) {
+      toast((e as Error).message || "切换线路失败", "info");
+    } finally {
+      setSwitchingLine(false);
+    }
+  }, [switchingLine, toast]);
   const [rate, setRate] = useState(1);
   /* 取播放地址失败后手动重试：递增即重新触发拉取 */
   const [playTry, setPlayTry] = useState(0);
@@ -835,7 +881,18 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                       onPlaying={() => dispatchMachine({ type: "PLAYING" })}
                       onPause={() => dispatchMachine({ type: "PAUSE" })}
                       onWaiting={() => dispatchMachine({ type: "WAITING" })}
-                      onEnded={() => { const next = episodes.find((e) => e.ep_num === curEp + 1); if (next) pickEp(next.ep_num); }}
+                      onEnded={() => {
+                        if (sleepTimerMinutes === -1) {
+                          videoRef.current?.pause();
+                          setSleepTimer(null);
+                          toast("睡眠定时：本集已播完，已为您暂停播放", "info");
+                          return;
+                        }
+                        if (autoNext) {
+                          const next = episodes.find((e) => e.ep_num === curEp + 1);
+                          if (next) pickEp(next.ep_num);
+                        }
+                      }}
                       onError={(m) => dispatchMachine({ type: "ERROR", error: m })}
                     />
                   </div>
@@ -871,13 +928,20 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                   )}
                   {err && (
                     <div className="absolute inset-0 z-30 flex items-center justify-center">
-                      <div className="rounded-xl p-5 flex flex-col items-center gap-3 text-[13px] hg-ink-2" style={{ background: "rgba(0,0,0,.74)" }}>
+                      <div className="rounded-xl p-5 flex flex-col items-center gap-3 text-[13px] hg-ink-2" style={{ background: "rgba(0,0,0,.78)" }}>
                         <span>视频暂时无法加载</span>
                         <span className="text-[10.5px] hg-ink-4 max-w-[240px] text-center break-all">{err}</span>
-                        <button className="px-4 py-1.5 rounded-full hg-chip-strong hg-link text-[12.5px] font-semibold pressable"
-                          onClick={() => { dispatchMachine({ type: "RETRY" }); videoRef.current?.reload(); }}>
-                          重新加载
-                        </button>
+                        <div className="flex items-center gap-2 mt-1">
+                          <button className="px-4 py-1.5 rounded-full hg-chip-strong hg-link text-[12.5px] font-semibold pressable"
+                            onClick={() => { dispatchMachine({ type: "RETRY" }); videoRef.current?.reload(); }}>
+                            重新加载
+                          </button>
+                          <button className="px-3.5 py-1.5 rounded-full bg-primary/25 text-primary border border-primary/35 text-[12.5px] font-semibold pressable hover:bg-primary/35 disabled:opacity-60"
+                            disabled={switchingLine}
+                            onClick={handleFailoverLine}>
+                            {switchingLine ? "切线中…" : "换线重试"}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -958,13 +1022,20 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
               {/* 取不到播放地址时播放器不会创建，错误提示要放在播放器外面，否则只会停在封面 */}
               {isActive && kind === "video" && !playUrl && !!err && (
                 <div className="absolute inset-0 z-30 flex items-center justify-center">
-                  <div className="rounded-xl p-5 flex flex-col items-center gap-3 text-[13px] hg-ink-2" style={{ background: "rgba(0,0,0,.74)" }}>
+                  <div className="rounded-xl p-5 flex flex-col items-center gap-3 text-[13px] hg-ink-2" style={{ background: "rgba(0,0,0,.78)" }}>
                     <span>视频暂时无法加载</span>
                     <span className="text-[10.5px] hg-ink-4 max-w-[240px] text-center break-all">{err}</span>
-                    <button className="px-4 py-1.5 rounded-full hg-chip-strong hg-link text-[12.5px] font-semibold pressable"
-                      onClick={() => { dispatchMachine({ type: "RETRY" }); setPlayTry((n) => n + 1); }}>
-                      重新加载
-                    </button>
+                    <div className="flex items-center gap-2 mt-1">
+                      <button className="px-4 py-1.5 rounded-full hg-chip-strong hg-link text-[12.5px] font-semibold pressable"
+                        onClick={() => { dispatchMachine({ type: "RETRY" }); setPlayTry((n) => n + 1); }}>
+                        重新加载
+                      </button>
+                      <button className="px-3.5 py-1.5 rounded-full bg-primary/25 text-primary border border-primary/35 text-[12.5px] font-semibold pressable hover:bg-primary/35 disabled:opacity-60"
+                        disabled={switchingLine}
+                        onClick={handleFailoverLine}>
+                        {switchingLine ? "切线中…" : "换线重试"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1434,8 +1505,34 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         </>
       )}
       </div>
+      {/* AMOLED 极致夜间护眼纯黑遮罩 */}
+      {screenDim > 0 && (
+        <div
+          className="absolute inset-0 pointer-events-none z-[35] bg-black transition-opacity"
+          style={{ opacity: screenDim }}
+        />
+      )}
       {!isDesktop && !fs && !clean && !controlsLocked && active && (
         <div className="absolute right-3 z-40 flex items-center gap-2" style={{ top: "calc(var(--sat, 0px) + 6px)" }}>
+          {/* 睡眠定时倒计时胶囊 */}
+          {sleepTimerDeadline && (
+            <button
+              onClick={() => { setSleepTimer(null); toast("已取消睡眠定时", "ok"); }}
+              className="hg-chip px-2.5 h-9 rounded-full flex items-center gap-1 pressable elev-1 text-[11px] font-bold text-amber-300"
+              title="点击取消睡眠定时">
+              <IClock size={13} />
+              <span>{Math.max(1, Math.ceil((sleepTimerDeadline - Date.now()) / 60000))}m</span>
+            </button>
+          )}
+          {sleepTimerMinutes === -1 && (
+            <button
+              onClick={() => { setSleepTimer(null); toast("已取消睡眠定时", "ok"); }}
+              className="hg-chip px-2.5 h-9 rounded-full flex items-center gap-1 pressable elev-1 text-[11px] font-bold text-amber-300"
+              title="点击取消睡眠定时">
+              <IClock size={13} />
+              <span>播完停</span>
+            </button>
+          )}
           <button onClick={() => setMuted(m => !m)} aria-label={muted ? "取消静音" : "静音"}
             className="hg-chip w-9 h-9 rounded-full flex items-center justify-center pressable elev-1">
             {muted ? <IVolMute size={17} /> : <IVol size={17} />}

@@ -55,6 +55,8 @@ type Persist = {
   volume: number;
   searchHist: string[];
   homeMode?: HomeMode;
+  autoNext?: boolean;
+  screenDim?: number;
 };
 
 const LS = "hghub_app_v1";
@@ -62,6 +64,8 @@ const DEFAULTS: Persist = {
   likes: [], favs: [], history: [], follows: [],
   muted: true, muteOnStartup: true, volume: 0.7, searchHist: [],
   homeMode: "hall",
+  autoNext: true,
+  screenDim: 0,
 };
 
 /** 旧版本 history 是 number[]，读出来时升级成带进度的结构 */
@@ -87,8 +91,10 @@ function loadPersist(): Persist {
     if (!raw) return DEFAULTS;
     const p = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Persist>) };
     const muteOnStartup = p.muteOnStartup !== false;
+    const autoNext = p.autoNext !== false;
+    const screenDim = typeof p.screenDim === "number" ? Math.max(0, Math.min(0.75, p.screenDim)) : 0;
     const homeMode = (p.homeMode === "feed" ? "feed" : "hall") as HomeMode;
-    return { ...p, muteOnStartup, muted: muteOnStartup || p.muted === true, history: normalizeHistory(p.history), homeMode };
+    return { ...p, muteOnStartup, autoNext, screenDim, muted: muteOnStartup || p.muted === true, history: normalizeHistory(p.history), homeMode };
   } catch {
     return DEFAULTS;
   }
@@ -140,6 +146,13 @@ export type Store = {
   muted: boolean; setMuted: (v: boolean | ((p: boolean) => boolean)) => void;
   muteOnStartup: boolean; setMuteOnStartup: (on: boolean) => void;
   homeMode: HomeMode; setHomeMode: (mode: HomeMode) => void;
+  autoNext: boolean; setAutoNext: (v: boolean) => void;
+  screenDim: number; setScreenDim: (v: number) => void;
+  sleepTimerMinutes: number | null;
+  sleepTimerDeadline: number | null;
+  setSleepTimer: (m: number | null) => void;
+  exportUserData: () => string;
+  importUserData: (raw: string | Record<string, unknown>) => { ok: boolean; count: number };
   volume: number; setVolume: (v: number) => void;
   searchHist: string[]; addSearch: (q: string) => void; clearSearchHist: () => void;
   strictSecurity: boolean; strictSecurityReady: boolean; securityPending: boolean; cliRelaxed: boolean; setStrictSecurity: (on: boolean) => Promise<void>;
@@ -274,6 +287,69 @@ export const useStore: StoreHook = create<Store>((set, get) => ({
   setHomeMode: (homeMode: HomeMode) => {
     savePersist({ homeMode });
     set({ homeMode });
+  },
+  autoNext: initialPersist.autoNext !== false,
+  setAutoNext: (autoNext: boolean) => {
+    savePersist({ autoNext });
+    set({ autoNext });
+  },
+  screenDim: initialPersist.screenDim || 0,
+  setScreenDim: (screenDim: number) => {
+    const v = Math.max(0, Math.min(0.75, screenDim));
+    savePersist({ screenDim: v });
+    set({ screenDim: v });
+  },
+  sleepTimerMinutes: null,
+  sleepTimerDeadline: null,
+  setSleepTimer: (m: number | null) => {
+    if (m === null) {
+      set({ sleepTimerMinutes: null, sleepTimerDeadline: null });
+    } else if (m === -1) {
+      set({ sleepTimerMinutes: -1, sleepTimerDeadline: null });
+    } else {
+      set({ sleepTimerMinutes: m, sleepTimerDeadline: Date.now() + m * 60 * 1000 });
+    }
+  },
+  exportUserData: () => {
+    const s = get();
+    const backup = {
+      version: 1,
+      appName: "HGhub",
+      createdAt: new Date().toISOString(),
+      favs: s.favs,
+      history: s.history,
+      follows: s.follows,
+      searchHist: s.searchHist,
+    };
+    return JSON.stringify(backup, null, 2);
+  },
+  importUserData: (raw: string | Record<string, unknown>) => {
+    try {
+      const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (!data || typeof data !== "object") return { ok: false, count: 0 };
+      const s = get();
+      const rawFavs = Array.isArray((data as Record<string, unknown>).favs)
+        ? ((data as Record<string, unknown>).favs as unknown[]).filter((x): x is number => typeof x === "number")
+        : [];
+      const newFavs = Array.from(new Set([...rawFavs, ...s.favs]));
+      const rawFollows = Array.isArray((data as Record<string, unknown>).follows)
+        ? ((data as Record<string, unknown>).follows as unknown[]).filter((x): x is number => typeof x === "number")
+        : [];
+      const newFollows = Array.from(new Set([...rawFollows, ...s.follows]));
+      const existingHistoryMap = new Map(s.history.map((h) => [h.id, h]));
+      const rawHistory = normalizeHistory((data as Record<string, unknown>).history);
+      rawHistory.forEach((h) => {
+        if (!existingHistoryMap.has(h.id)) {
+          existingHistoryMap.set(h.id, h);
+        }
+      });
+      const newHistory = Array.from(existingHistoryMap.values()).slice(0, 100);
+      savePersist({ favs: newFavs, history: newHistory, follows: newFollows });
+      set({ favs: newFavs, history: newHistory, follows: newFollows });
+      return { ok: true, count: newFavs.length + newHistory.length };
+    } catch {
+      return { ok: false, count: 0 };
+    }
   },
   volume: initialPersist.volume,
   setVolume: (v) => {
