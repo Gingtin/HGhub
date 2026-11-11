@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Mode = "release"
 )
 
@@ -46,7 +46,7 @@ $env:CC_aarch64_linux_android = "$ndkBin\aarch64-linux-android24-clang.cmd"
 $env:CXX_aarch64_linux_android = "$ndkBin\aarch64-linux-android24-clang++.cmd"
 $env:AR_aarch64_linux_android = "$ndkBin\llvm-ar.exe"
 $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = "$ndkBin\aarch64-linux-android24-clang.cmd"
-$env:PATH = "$ndkBin;$env:JAVA_HOME\bin;$env:PATH"
+$env:PATH = "C:\Users\Gingtin\.cargo\bin;$ndkBin;$env:JAVA_HOME\bin;$env:PATH"
 
 Write-Host "=== HGhub Android 打包环境 ===" -ForegroundColor Cyan
 Write-Host "JAVA_HOME:        $env:JAVA_HOME"
@@ -86,12 +86,16 @@ if ($Mode -eq "release" -or $Mode -eq "all") {
     Write-Host "`n[3/3] 执行 Gradle assembleArm64Release..." -ForegroundColor Green
     .\gradlew.bat assembleArm64Release
 
+    $relApk = "$scriptDir\src-tauri\gen\android\app\build\outputs\apk\arm64\release\app-arm64-release.apk"
     $unsigned = "$scriptDir\src-tauri\gen\android\app\build\outputs\apk\arm64\release\app-arm64-release-unsigned.apk"
     $signed = "$scriptDir\build-apk\HGhub-v1.2.1-arm64-release.apk"
     $apksigner = "$env:ANDROID_HOME\build-tools\36.0.0\apksigner.bat"
     $keystore = "$scriptDir\debug.keystore"
 
-    if ((Test-Path $unsigned) -and (Test-Path $apksigner) -and (Test-Path $keystore)) {
+    if (Test-Path $relApk) {
+        Copy-Item $relApk $signed -Force
+        Write-Host "已生成 Release APK: $signed" -ForegroundColor Yellow
+    } elseif ((Test-Path $unsigned) -and (Test-Path $apksigner) -and (Test-Path $keystore)) {
         & $apksigner sign --ks "$keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$signed" "$unsigned"
         Write-Host "已生成并签名 Release APK: $signed" -ForegroundColor Yellow
     }
