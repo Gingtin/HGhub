@@ -32,7 +32,7 @@ class MainActivity : TauriActivity() {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
 
-    // 针对三星 S24 Ultra 等高刷旗舰：请求最高支持的刷新率（120Hz LTPO 满血流畅）
+    // 请求设备最高支持的刷新率（支持 120Hz 高刷屏）
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
       val disp = display
       val modes = disp?.supportedModes
@@ -44,7 +44,7 @@ class MainActivity : TauriActivity() {
       }
     }
 
-    // 针对三星 One UI 挖孔屏与手势底栏：精准监听系统 Insets 并注入 CSS --sat 与 --sab
+    // 监听屏幕挖孔与导航栏 Insets 并注入 CSS 变量 --sat 与 --sab
     ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, insets ->
       val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
       val navBarInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars())

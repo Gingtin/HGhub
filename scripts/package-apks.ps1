@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $scriptDir = "G:\HGhub"
 $adb = "C:\Users\Gingtin\AppData\Local\Microsoft\WinGet\Packages\Google.PlatformTools_Microsoft.Winget.Source_8wekyb3d8bbwe\platform-tools\adb.exe"
@@ -28,17 +28,18 @@ Write-Host "`n[2/2] 正在构建 Debug APK (assembleArm64Debug)..." -ForegroundC
 
 $outDir = "$scriptDir\build-apk"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+$pkgVersion = (Get-Content "$scriptDir\package.json" -Raw | ConvertFrom-Json).version
 
 $relApk = "$scriptDir\src-tauri\gen\android\app\build\outputs\apk\arm64\release\app-arm64-release.apk"
 $dbgApk = "$scriptDir\src-tauri\gen\android\app\build\outputs\apk\arm64\debug\app-arm64-debug.apk"
 
 if (Test-Path $relApk) {
-    Copy-Item $relApk "$outDir\HGhub-v1.2.1-arm64-release.apk" -Force
-    Write-Host "`nRelease APK 打包完成: $outDir\HGhub-v1.2.1-arm64-release.apk" -ForegroundColor Green
+    Copy-Item $relApk "$outDir\HGhub-v$pkgVersion-arm64-release.apk" -Force
+    Write-Host "`nRelease APK 打包完成: $outDir\HGhub-v$pkgVersion-arm64-release.apk" -ForegroundColor Green
 }
 if (Test-Path $dbgApk) {
-    Copy-Item $dbgApk "$outDir\HGhub-v1.2.1-arm64-debug.apk" -Force
-    Write-Host "Debug APK 打包完成: $outDir\HGhub-v1.2.1-arm64-debug.apk" -ForegroundColor Green
+    Copy-Item $dbgApk "$outDir\HGhub-v$pkgVersion-arm64-debug.apk" -Force
+    Write-Host "Debug APK 打包完成: $outDir\HGhub-v$pkgVersion-arm64-debug.apk" -ForegroundColor Green
 }
 
 # 3. 校验产物

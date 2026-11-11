@@ -42,7 +42,7 @@
 .plat-android {
   --r-sm: 10px; --r-md: 14px; --r-lg: 18px; --r-ctl: 999px;
   -webkit-touch-callout: none;
-  /* 专为三星 Galaxy S24 Ultra / AMOLED 调优的纯黑深渊色板（完全熄灭像素，极致对比度与节能） */
+  /* Android AMOLED 纯黑深色调（完全熄灭像素，提高对比度并降低能耗） */
   --p-canvas: #000000;
   --p-bg: #000000;
   --p-s1: #0a0a0a;

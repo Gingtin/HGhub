@@ -328,7 +328,7 @@ function MobileShell() {
 
 /* ============ 入口 ============ */
 export default function App() {
-  const { platform, loginOpen, setLoginOpen, tab, setTab, stack, pop, fs, setFs, clean, setClean, toast } = useStore();
+  const { platform, loginOpen, setLoginOpen, tab, setTab, stack, pop, fs, setFs, clean, setClean, toast, homeMode, setHomeMode } = useStore();
   const lastBackRef = useRef(0);
 
   useEffect(() => {
@@ -336,7 +336,7 @@ export default function App() {
   }, [tab, stack, loginOpen]);
 
   /* —— 安卓硬件返回键 ——
-     层级：临时面板/全屏/清屏拦截 → 全屏 → 清屏 → 登录框 → 页面栈 → 回首页 → 双击确认退出应用。 */
+     层级：临时面板/全屏/清屏拦截 → 全屏 → 清屏 → 登录框 → 页面栈 → 回首页 → 退出刷剧回大厅 → 双击确认退出应用。 */
   const backRef = useRef<() => void>(() => {});
   backRef.current = () => {
     if (runBack()) return;                                   // 播放器选集/浮层/描述/全屏优先消费
@@ -346,6 +346,7 @@ export default function App() {
     if (loginOpen) { setLoginOpen(false); return; }
     if (stack.length) { pop(); return; }
     if (tab !== "home") { setTab("home"); return; }
+    if (homeMode === "feed") { setHomeMode("hall"); return; }
 
     // 在首页且无其他弹窗时：双击返回键退出应用，防止边缘防误触直接闪退到桌面
     const now = Date.now();

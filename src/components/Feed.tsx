@@ -72,7 +72,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const err = machine.status === "error" ? (machine.error || "播放异常") : "";
   const [controlsLocked, setControlsLocked] = useState(false);
 
-  /* 睡眠定时器倒计时监听 */
+  /* 睡眠定时器倒计时监听与展示实时刷新 */
+  const [, setTimerTick] = useState(0);
   useEffect(() => {
     if (!sleepTimerDeadline || !active) return;
     const id = window.setInterval(() => {
@@ -80,8 +81,10 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         videoRef.current?.pause();
         setSleepTimer(null);
         toast("睡眠定时已生效，已暂停播放", "info");
+      } else {
+        setTimerTick((t) => t + 1);
       }
-    }, 1000);
+    }, 10000);
     return () => window.clearInterval(id);
   }, [sleepTimerDeadline, active, setSleepTimer, toast]);
 
@@ -172,7 +175,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const lockArmedRef = useRef(false);
   const [scrub, setScrub] = useState<{ pct: number; target: number } | null>(null);
   const scrubTarget = useRef<number | null>(null);
-  /* 竖屏下横屏视频适应模式 + 双指无级缩放/平移（记住用户选择，适配三星S24U等宽屏机型） */
+  /* 竖屏下横屏视频适应模式 + 双指无级缩放/平移（记住用户偏好，适配不同屏幕比例） */
   const [portraitFit, setPortraitFit] = useState<"contain" | "cover">(() => {
     try {
       return (localStorage.getItem("hghub_fit") as "contain" | "cover") || "contain";
@@ -885,12 +888,19 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                         if (sleepTimerMinutes === -1) {
                           videoRef.current?.pause();
                           setSleepTimer(null);
-                          toast("睡眠定时：本集已播完，已为您暂停播放", "info");
+                          toast("睡眠定时：本集已播完，已暂停播放", "info");
                           return;
                         }
                         if (autoNext) {
                           const next = episodes.find((e) => e.ep_num === curEp + 1);
-                          if (next) pickEp(next.ep_num);
+                          if (next) {
+                            pickEp(next.ep_num);
+                          } else if (index < videoIds.length - 1) {
+                            go(1);
+                            toast("当前剧集已完结，为您播放下一部", "info");
+                          } else {
+                            toast("全剧已播完", "info");
+                          }
                         }
                       }}
                       onError={(m) => dispatchMachine({ type: "ERROR", error: m })}
@@ -1317,13 +1327,13 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                             </span>
                           )}
 
-                          {/* 画面比例切换（针对三星 S24U 等 19.5:9 旗舰屏：一键切换原画/满屏） */}
+                          {/* 画面比例切换（原比例 / 全屏填充） */}
                           <button
                             type="button"
                             onClick={() => {
                               const next = portraitFit === "contain" ? "cover" : "contain";
                               updatePortraitFit(next);
-                              toast(next === "cover" ? "已切换：满屏铺满 (19.5:9 沉浸)" : "已切换：原画完整 (防字幕裁剪)", "info");
+                              toast(next === "cover" ? "已切换至全屏填充" : "已切换至原始比例", "info");
                             }}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold text-white/95 backdrop-blur-md pressable transition-all"
                             style={{
@@ -1505,7 +1515,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         </>
       )}
       </div>
-      {/* AMOLED 极致夜间护眼纯黑遮罩 */}
+      {/* 夜间护眼微光遮罩 */}
       {screenDim > 0 && (
         <div
           className="absolute inset-0 pointer-events-none z-[35] bg-black transition-opacity"

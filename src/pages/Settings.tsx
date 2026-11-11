@@ -85,41 +85,41 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
           </Section>
 
           {platform === "android" && (
-            <Section title="旗舰设备优化 (Samsung S24 Ultra 专属)">
+            <Section title="屏幕与显示优化">
               <div className="px-3.5 py-3">
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-mint animate-pulse" />
-                  <span className="text-[12.5px] font-bold text-on">Galaxy S24 Ultra 调优已就绪</span>
+                  <span className="w-2 h-2 rounded-full bg-mint" />
+                  <span className="text-[12.5px] font-bold text-on">显示优化与硬件加速已就绪</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 mt-2.5 text-[10.5px]">
                   <div className="p-2 rounded-lg bg-s3/60 border border-white/5">
                     <div className="text-dim">色彩模式</div>
-                    <div className="font-semibold text-on mt-0.5">AMOLED 纯黑深渊 (0% 漏光)</div>
+                    <div className="font-semibold text-on mt-0.5">AMOLED 纯黑深色</div>
                   </div>
                   <div className="p-2 rounded-lg bg-s3/60 border border-white/5">
                     <div className="text-dim">刷新率</div>
-                    <div className="font-semibold text-primary mt-0.5">120Hz LTPO 满血物理流畅</div>
+                    <div className="font-semibold text-primary mt-0.5">120Hz LTPO 动态高刷</div>
                   </div>
                   <div className="p-2 rounded-lg bg-s3/60 border border-white/5">
-                    <div className="text-dim">异形避让</div>
-                    <div className="font-semibold text-on mt-0.5">One UI 中置打孔与手势避让</div>
+                    <div className="text-dim">屏幕适配</div>
+                    <div className="font-semibold text-on mt-0.5">全面屏与安全区自适应</div>
                   </div>
                   <div className="p-2 rounded-lg bg-s3/60 border border-white/5">
                     <div className="text-dim">解码加速</div>
-                    <div className="font-semibold text-amber-300 mt-0.5">骁龙8 Gen 3 硬件硬解</div>
+                    <div className="font-semibold text-amber-300 mt-0.5">硬件多媒体硬解加速</div>
                   </div>
                 </div>
 
-                {/* AMOLED 深度夜光调光滑杆 */}
+                {/* 夜间微光护眼调光滑杆 */}
                 <div className="mt-3 pt-3 border-t border-white/5">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[12px] font-semibold text-on">AMOLED 极致夜光护眼调光</span>
+                    <span className="text-[12px] font-semibold text-on">夜间微光护眼调光</span>
                     <span className="text-[11px] font-bold text-primary tabular-nums">
                       {screenDim === 0 ? "原生亮度" : `已压暗 ${Math.round(screenDim * 100)}%`}
                     </span>
                   </div>
                   <div className="text-[10.5px] text-mut mb-2 leading-relaxed">
-                    在系统最低亮度基础上阻光，全黑卧室看剧不刺眼，纯黑像素完全熄灭，省电护眼。
+                    在系统最低亮度基础上进一步压暗，暗光环境下观看柔和舒适不刺眼，纯黑像素关闭降低功耗。
                   </div>
                   <input
                     type="range"
@@ -141,7 +141,7 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
               <div className="flex-1 min-w-0">
                 <div className="text-[12.5px] text-on font-medium">首页展示模式</div>
                 <div className="text-[10.5px] text-mut mt-0.5">
-                  {homeMode === "hall" ? "海报大厅（精选选剧，看中再播不打扰）" : "沉浸刷剧（类似抖音，进入即开播）"}
+                  {homeMode === "hall" ? "海报大厅（海报网格与猜你喜欢瀑布流）" : "全屏沉浸（上下滑动流式播放）"}
                 </div>
               </div>
               <div className="flex bg-s3 rounded-xl p-0.5 border border-white/5 shrink-0">
@@ -154,10 +154,10 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setHomeMode("feed"); toast("已切换为沉浸刷剧模式", "ok"); }}
+                  onClick={() => { setHomeMode("feed"); toast("已切换为全屏沉浸模式", "ok"); }}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${homeMode === "feed" ? "bg-primary text-on-primary shadow-xs" : "text-mut hover:text-on"}`}
                 >
-                  沉浸刷剧
+                  全屏沉浸
                 </button>
               </div>
             </div>
@@ -454,7 +454,7 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
         <div className="p-5">
           <div className="text-[14.5px] font-bold text-on">导入数据恢复</div>
           <p className="text-[11.5px] text-mut mt-1 leading-relaxed">
-            请粘贴先前导出的备份 JSON 内容。导入采用智能合并，不会冲掉当前已有的追剧记录。
+            请粘贴先前导出的备份 JSON 内容。导入时会自动合并去重，保留已有追剧记录。
           </p>
           <textarea
             value={importText}

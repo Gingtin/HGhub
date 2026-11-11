@@ -47,7 +47,7 @@ const CATEGORY_CHIPS: readonly ChipItem[] = [
 /* =========================================================================
    首页（双模设计）：
    1. 海报大厅（Hall）：继续观看横幅 + 分类快捷筛选 + 今日热播TOP横滑 + 瀑布流 + 一键换一批
-   2. 沉浸刷剧（Feed）：类似抖音上下滑切剧，自带【换一批】与【切回大厅】浮钮
+   2. 全屏沉浸（Feed）：上下滑全屏切剧，自带【换一批】与【切回大厅】浮钮
    ========================================================================= */
 
 export default function Home({ active, bottomInset, wide = false }: { active: boolean; bottomInset: number; wide?: boolean }) {
@@ -323,7 +323,7 @@ export default function Home({ active, bottomInset, wide = false }: { active: bo
           {/* 左侧：微型品牌药丸 */}
           <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold bg-black/60 backdrop-blur-md text-white border border-white/15 pointer-events-auto shadow-md">
             <Logo size={18} />
-            <span>随心刷</span>
+            <span>全屏播放</span>
           </div>
 
           {/* 右侧：换一批 & 选剧大厅 */}
@@ -380,12 +380,9 @@ export default function Home({ active, bottomInset, wide = false }: { active: bo
             <div>
               <div className="text-[17px] font-bold leading-tight tracking-tight flex items-center gap-1.5">
                 <span>黄果短剧</span>
-                <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-primary/20 text-primary border border-primary/30">
-                  PRO
-                </span>
               </div>
               <div className="text-[10px] text-mut leading-none mt-0.5">
-                3,300+ 热门剧集 · 纯净自用
+                精选短剧 · 聚合播放
               </div>
             </div>
           </div>
@@ -395,13 +392,13 @@ export default function Home({ active, bottomInset, wide = false }: { active: bo
               type="button"
               onClick={() => {
                 setHomeMode("feed");
-                toast("进入沉浸随心刷模式", "ok");
+                toast("已切换为全屏沉浸模式", "ok");
               }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold bg-gradient-to-r from-amber-500/20 to-primary/20 hover:from-amber-500/30 hover:to-primary/30 text-primary border border-primary/30 transition-all active:scale-95 shadow-sm"
-              title="进入抖音式上下滑沉浸播放"
+              title="切换为全屏沉浸播放"
             >
               <IPlayF size={12} className="text-primary fill-primary" />
-              <span>沉浸随心刷</span>
+              <span>全屏沉浸</span>
             </button>
 
             <button

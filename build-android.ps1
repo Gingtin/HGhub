@@ -81,6 +81,7 @@ Copy-Item $soSrc "$jniDir\libhuangguo_client_lib.so" -Force
 # 4. 执行 Gradle 打包
 Set-Location -Path "$scriptDir\src-tauri\gen\android"
 New-Item -ItemType Directory -Force -Path "$scriptDir\build-apk" | Out-Null
+$pkgVersion = (Get-Content "$scriptDir\package.json" -Raw | ConvertFrom-Json).version
 
 if ($Mode -eq "release" -or $Mode -eq "all") {
     Write-Host "`n[3/3] 执行 Gradle assembleArm64Release..." -ForegroundColor Green
@@ -88,7 +89,7 @@ if ($Mode -eq "release" -or $Mode -eq "all") {
 
     $relApk = "$scriptDir\src-tauri\gen\android\app\build\outputs\apk\arm64\release\app-arm64-release.apk"
     $unsigned = "$scriptDir\src-tauri\gen\android\app\build\outputs\apk\arm64\release\app-arm64-release-unsigned.apk"
-    $signed = "$scriptDir\build-apk\HGhub-v1.2.1-arm64-release.apk"
+    $signed = "$scriptDir\build-apk\HGhub-v$pkgVersion-arm64-release.apk"
     $apksigner = "$env:ANDROID_HOME\build-tools\36.0.0\apksigner.bat"
     $keystore = "$scriptDir\debug.keystore"
 
@@ -105,7 +106,7 @@ if ($Mode -eq "debug" -or $Mode -eq "all") {
     Write-Host "`n[3/3] 执行 Gradle assembleArm64Debug..." -ForegroundColor Green
     .\gradlew.bat assembleArm64Debug
     $debugApk = "$scriptDir\src-tauri\gen\android\app\build\outputs\apk\arm64\debug\app-arm64-debug.apk"
-    $outDebug = "$scriptDir\build-apk\HGhub-v1.2.1-arm64-debug.apk"
+    $outDebug = "$scriptDir\build-apk\HGhub-v$pkgVersion-arm64-debug.apk"
     Copy-Item $debugApk $outDebug -Force
     Write-Host "已生成 Debug APK: $outDebug" -ForegroundColor Yellow
 }
