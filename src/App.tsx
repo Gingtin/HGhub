@@ -119,7 +119,7 @@ function StackFeedPage({
   const [videoIds, setVideoIds] = useState<number[]>(page.videoIds);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const pageRef = useRef(1);
+  const pageRef = useRef(Math.floor(Math.random() * 25) + 1);
 
   const handleNearEnd = useCallback(async () => {
     if (loadingMore || !hasMore) return;
@@ -228,7 +228,7 @@ function AppBody() {
     <div className={`absolute inset-0 flex bg-canvas plat-${platform}`}>
       {!isMobile && <DesktopRail collapsed={collapsed} />}
       <div ref={mainRef} className="relative flex-1 min-w-0 overflow-hidden win-main">
-        <div className={vis("home")}><Home active={pageActive && tab === "home"} bottomInset={bottomInset} /></div>
+        <div className={vis("home")}><Home active={pageActive && tab === "home"} bottomInset={bottomInset} wide={wide} /></div>
         <div className={vis("search")}><Suspense fallback={<PageFallback />}><Search active={pageActive && tab === "search"} wide={wide} /></Suspense></div>
         <div className={vis("category")}><Suspense fallback={<PageFallback />}><Category wide={wide} active={pageActive && tab === "category"} /></Suspense></div>
         <div className={vis("profile")}><Suspense fallback={<PageFallback />}><Profile wide={wide} /></Suspense></div>
@@ -300,7 +300,7 @@ function ShellInner({ collapsed, theater }: { collapsed: boolean; theater: boole
     <div className={`absolute inset-0 flex bg-canvas plat-${platform}`}>
       {!theater && <DesktopRail collapsed={collapsed} />}
       <div ref={mainRef} className={`relative flex-1 min-w-0 overflow-hidden win-main ${theater ? "is-theater-main" : ""}`}>
-        <div className={vis("home")}><Home active={pageActive && tab === "home"} bottomInset={14} /></div>
+        <div className={vis("home")}><Home active={pageActive && tab === "home"} bottomInset={14} wide={wide} /></div>
         <div className={vis("search")}><Suspense fallback={<PageFallback />}><Search active={pageActive && tab === "search"} wide={wide} /></Suspense></div>
         <div className={vis("category")}><Suspense fallback={<PageFallback />}><Category wide={wide} active={pageActive && tab === "category"} /></Suspense></div>
         <div className={vis("profile")}><Suspense fallback={<PageFallback />}><Profile wide={wide} /></Suspense></div>
@@ -329,23 +329,33 @@ function MobileShell() {
 
 /* ============ 入口 ============ */
 export default function App() {
-  const { platform, loginOpen, setLoginOpen, tab, setTab, stack, pop, fs, setFs } = useStore();
+  const { platform, loginOpen, setLoginOpen, tab, setTab, stack, pop, fs, setFs, clean, setClean, toast } = useStore();
+  const lastBackRef = useRef(0);
+
   useEffect(() => {
     tracePlayback("navigation.change", { tab, stack: stack.map(p => ({ page: p.kind, key: p.key })), login_open: loginOpen });
   }, [tab, stack, loginOpen]);
 
   /* —— 安卓硬件返回键 ——
-     层级：全屏 → 面板/弹层 → 登录框 → 页面栈 → 回首页 → 退出应用。
-     不注册这个监听，Tauri 会直接 webView.goBack() 或退出，表现就是「任意页面返回都回桌面」。 */
+     层级：临时面板/全屏/清屏拦截 → 全屏 → 清屏 → 登录框 → 页面栈 → 回首页 → 双击确认退出应用。 */
   const backRef = useRef<() => void>(() => {});
   backRef.current = () => {
-    if (fs) { setFs(false); return; }                        // 沉浸全屏
+    if (runBack()) return;                                   // 播放器选集/浮层/描述/全屏优先消费
+    if (fs) { setFs(false); return; }                        // 兜底沉浸全屏
+    if (clean) { setClean(false); return; }                  // 兜底清屏模式
     if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
-    if (runBack()) return;                                  // 播放器的选集/评论/图文面板
     if (loginOpen) { setLoginOpen(false); return; }
     if (stack.length) { pop(); return; }
     if (tab !== "home") { setTab("home"); return; }
-    invoke("plugin:app|exit", { code: 0 }).catch(() => {});
+
+    // 在首页且无其他弹窗时：双击返回键退出应用，防止边缘防误触直接闪退到桌面
+    const now = Date.now();
+    if (now - lastBackRef.current < 2000) {
+      invoke("plugin:app|exit", { code: 0 }).catch(() => {});
+    } else {
+      lastBackRef.current = now;
+      toast("再按一次退出黄果短剧", "info");
+    }
   };
 
   useEffect(() => {

@@ -12,7 +12,7 @@ import PlaybackLock from "./PlaybackLock";
 import { playbackProgressStore } from "../playbackStore";
 import { INITIAL_MACHINE_STATE, playerStateReducer } from "../playerStateMachine";
 import { ArticlePanel, CommentsPanel, EpisodesPanel } from "./Panels";
-import { setBackHandler } from "../back";
+import { pushBackHandler } from "../back";
 import {
   IBack, IBoltF, IChevR, IChevronDown, IChevronUp, IClose, ICommentF, ICompress, IExpand, IFileText, IHeart, IHeartF,
   ILink, IList, ILockF, IPauseF, IPip, IPlayF, IPlus, IRotate, ISearch, IStar, IStarF, IVol, IVolMute,
@@ -48,7 +48,7 @@ function pruneRecord<T>(record: Record<string | number, T>, keepKey: string | nu
 
 export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind = "video", active, bottomInset, onBack, onNearEnd, startEp, startTime }: Props) {
   const store = useStore();
-  const { isLiked, isFav, toggleLikeLocal, toggleFavLocal, toggleFollowLocal, muted, setMuted, volume, setVolume, toast, addHistory, user, setLoginOpen } = store;
+  const { isFav, toggleFavLocal, toggleFollowLocal, muted, setMuted, volume, setVolume, toast, addHistory, user, setLoginOpen } = store;
   const isDesktop = !isMobile;
 
   const boxRef = useRef<HTMLDivElement>(null);
@@ -118,7 +118,6 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     if (paused) { setIdle(false); window.clearTimeout(idleTimer.current); }
   }, [paused]);
   const [fullscreen, setFullscreen] = useState(false);
-  const [heartBurst, setHeartBurst] = useState(0);
   /* —— 移动端手势 & 竖屏横片缩放 —— */
   const [holdSpeed, setHoldSpeed] = useState(false);
   const [speedLock, setSpeedLock] = useState(false);
@@ -476,7 +475,6 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         case "f": case "F": toggleFull(); break;
         case "t": case "T": setTheater((v) => !v); break;
         case "m": case "M": setMuted((v) => !v); break;
-        case "l": case "L": onLike(); break;
         case "s": case "S": onFav(); break;
         case "c": case "C": setPanel("comments"); break;
         case "e": case "E": setPanel("episodes"); break;
@@ -488,12 +486,19 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, controlsLocked, panel, index]);
 
-  /* 安卓返回键：面板打开时先关面板 */
+  /* 安卓硬件返回键深度消费层级：选集面板 -> 剧情简介 -> 清屏模式 -> 全屏播放(复位横屏) -> 栈页返回 */
   useEffect(() => {
-    if (!panel) { setBackHandler(null); return undefined; }
-    setBackHandler(() => { setPanel(null); return true; });
-    return () => setBackHandler(null);
-  }, [panel]);
+    if (!active) return undefined;
+    const handleBack = () => {
+      if (panel) { setPanel(null); return true; }
+      if (descOpen) { setDescOpen(false); return true; }
+      if (clean) { setClean(false); return true; }
+      if (fs) { exitFs(); return true; }
+      if (mode === "context" && onBack) { onBack(); return true; }
+      return false;
+    };
+    return pushBackHandler(handleBack);
+  }, [active, panel, descOpen, clean, fs, exitFs, mode, onBack]);
 
   useEffect(() => {
     const onFs = () => setFullscreen(!!document.fullscreenElement);
@@ -690,13 +695,17 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         lastTapRef.current.time = 0;
         videoRef.current?.toggle();
       } else {
-        // 单击屏幕：切换清屏模式（消除或恢复所有界面控件，只显示视频内容）
+        // 单击屏幕：若处于暂停状态则立刻起播；若正常播放中则切换清屏模式
         lastTapRef.current.time = now;
         clearTapTimer();
         lastTapRef.current.timer = window.setTimeout(() => {
           lastTapRef.current.timer = null;
-          setClean((c) => !c);
-        }, 250) as unknown as number;
+          if (paused) {
+            videoRef.current?.play();
+          } else {
+            setClean((c) => !c);
+          }
+        }, 220) as unknown as number;
       }
     }
   };
@@ -740,14 +749,6 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
   const requireLogin = () => { if (!user) { setLoginOpen(true); return false; } return true; };
 
-  const onLike = () => {
-    if (!curId) return;
-    const on = toggleLikeLocal(curId);
-    setHeartBurst((n) => n + 1);
-    toast(on ? "已加入喜欢" : "已取消喜欢", on ? "heart" : "info");
-    if (requireLogin()) { if (kind === "post") api.postLike(curId, on).catch(() => {}); else api.like(curId, curEp, on).catch(() => {}); }
-  };
-
   const onFav = () => {
     if (!curId) return;
     const on = toggleFavLocal(curId);
@@ -767,11 +768,6 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     setEpMap((m) => ({ ...m, [curId]: ep }));
     setPanel(null);
   };
-
-  const likeCount = useMemo(() => {
-    const base = meta.like;
-    return base + (isLiked(curId) ? 1 : 0);
-  }, [meta.like, curId, isLiked]);
 
   if (!videoIds.length) {
     return <div className="absolute inset-0 bg-black flex items-center justify-center"><div className="w-9 h-9 spinner" /></div>;
@@ -869,10 +865,16 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
                   {/* 暂停 / 缓冲 / 报错恢复 */}
                   {paused && !err && (
-                    <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-                      <span className="w-[66px] h-[66px] rounded-full flex items-center justify-center backdrop-blur-md"
-                        style={{ background: "rgba(0,0,0,.55)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.12)" }}>
-                        <IPlayF size={28} className="hg-ink ml-0.5" />
+                    <div
+                      className="absolute inset-0 z-10 flex items-center justify-center pointer-events-auto cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        videoRef.current?.play();
+                      }}
+                    >
+                      <span className="w-[68px] h-[68px] rounded-full flex items-center justify-center backdrop-blur-md pressable shadow-2xl transition-transform active:scale-90"
+                        style={{ background: "rgba(0,0,0,.6)", boxShadow: "inset 0 0 0 1.5px rgba(255,255,255,.2)" }}>
+                        <IPlayF size={30} className="text-white ml-1 drop-shadow" />
                       </span>
                     </div>
                   )}

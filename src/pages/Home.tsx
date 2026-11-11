@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Feed from "../components/Feed";
 import { api, fmt, fmtTime } from "../api";
 import type { Detail, RankItem, VideoCard } from "../types";
@@ -50,7 +50,7 @@ const CATEGORY_CHIPS: readonly ChipItem[] = [
    2. 沉浸刷剧（Feed）：类似抖音上下滑切剧，自带【换一批】与【切回大厅】浮钮
    ========================================================================= */
 
-export default function Home({ active, bottomInset }: { active: boolean; bottomInset: number }) {
+export default function Home({ active, bottomInset, wide = false }: { active: boolean; bottomInset: number; wide?: boolean }) {
   const { homeMode, setHomeMode, history, push, setTab, toast } = useStore();
 
   // -----------------------------------------------------------------------
@@ -66,6 +66,7 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
   const [heroDismissed, setHeroDismissed] = useState(false);
   const [lastWatchedDetail, setLastWatchedDetail] = useState<Detail | null>(null);
   const hallLoadedRef = useRef(false);
+  const categoryReqRef = useRef(0);
 
   // 观看记录中最靠前（最近观看）的一条
   const latestWatch = history.length > 0 ? history[0] : null;
@@ -116,29 +117,30 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
     }
   }, [initHall]);
 
-  // 切换分类芯片
+  // 切换分类芯片（带请求序号去抖防乱序）
   const handleSelectCategory = useCallback(async (chip: ChipItem) => {
     if (activeCategory === chip.id && chip.id !== "all") return;
     setActiveCategory(chip.id);
     setCategoryLoading(true);
+    const reqId = ++categoryReqRef.current;
     try {
       if (chip.id === "all") {
         const randomStart = Math.floor(Math.random() * 25) + 1;
         const res = await api.feed(randomStart, 12);
-        if (res?.items?.length) {
+        if (reqId === categoryReqRef.current && res?.items?.length) {
           setDiscoverVideos(res.items);
           setDiscoverPage(randomStart);
         }
       } else if (chip.type === "channel") {
         const res = await api.category(chip.id, 1, 12);
-        if (res?.items?.length) {
+        if (reqId === categoryReqRef.current && res?.items?.length) {
           setDiscoverVideos(res.items);
           setDiscoverPage(1);
         }
       } else if (chip.type === "search") {
         const tag = chip.tag || chip.label || "短剧";
         const res = await api.search(tag, 1, 12);
-        if (res?.items?.length) {
+        if (reqId === categoryReqRef.current && res?.items?.length) {
           setDiscoverVideos(res.items);
           setDiscoverPage(1);
         }
@@ -146,7 +148,9 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
     } catch {
       /* ignore */
     } finally {
-      setCategoryLoading(false);
+      if (reqId === categoryReqRef.current) {
+        setCategoryLoading(false);
+      }
     }
   }, [activeCategory]);
 
@@ -236,6 +240,7 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
   const [feedLoading, setFeedLoading] = useState(false);
   const [feedDone, setFeedDone] = useState(false);
   const [feedRefreshing, setFeedRefreshing] = useState(false);
+  const [feedBatchKey, setFeedBatchKey] = useState(0);
   const feedLoadedRef = useRef(false);
 
   const loadFeedPage = useCallback(async (p: number, reset = false) => {
@@ -276,6 +281,7 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
     try {
       const randomPage = Math.floor(Math.random() * 60) + 1;
       await loadFeedPage(randomPage, true);
+      setFeedBatchKey((k) => k + 1);
       toast("已为您换了一批短剧", "ok");
     } finally {
       setFeedRefreshing(false);
@@ -293,6 +299,7 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
       <div className="absolute inset-0 bg-black">
         {feedIds.length ? (
           <Feed
+            key={feedBatchKey}
             videoIds={feedIds}
             mode="home"
             active={active}
@@ -351,10 +358,9 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
   }
 
   // [模式 2]：海报选剧大厅模式（默认推荐，清爽不喧闹）
-  const allCardIds = [
-    ...discoverVideos.map((x) => x.id),
-    ...hotVideos.map((x) => x.id),
-  ];
+  const allCardIds = useMemo(() => {
+    return Array.from(new Set([...discoverVideos.map((x) => x.id), ...hotVideos.map((x) => x.id)]));
+  }, [discoverVideos, hotVideos]);
 
   const watchedPercent =
     latestWatch && latestWatch.dur > 0
@@ -619,6 +625,7 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
           ) : discoverVideos.length > 0 ? (
             <Masonry
               videos={discoverVideos}
+              wide={wide}
               onOpen={(v) => {
                 const idx = discoverVideos.findIndex((x) => x.id === v.id);
                 push({

@@ -3,6 +3,7 @@ import { api, fmt } from "../api";
 import { fetchRanks } from "../queries";
 import type { RankItem, VideoCard } from "../types";
 import { useStore } from "../store";
+import { pushBackHandler } from "../back";
 import { Masonry, RankRow } from "../components/cards";
 import { Empty } from "../components/ui";
 import { IBack, IClose, IFireF, IRefresh, ISearch, ITrophy } from "../icons";
@@ -24,6 +25,17 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
   useEffect(() => {
     if (active && !/Android/i.test(navigator.userAgent)) inputRef.current?.focus();
   }, [active]);
+
+  /* 移动端/安卓硬件返回键：如果在搜索结果列表，按返回先清空结果回到搜索推荐，不直接切 Tab */
+  useEffect(() => {
+    if (!active || !submitted) return undefined;
+    return pushBackHandler(() => {
+      setSubmitted("");
+      setQ("");
+      setItems([]);
+      return true;
+    });
+  }, [active, submitted]);
 
   const run = async (keyword: string, p: number) => {
     if (busy.current) return;

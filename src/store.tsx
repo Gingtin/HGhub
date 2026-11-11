@@ -113,6 +113,7 @@ function readTheme(): Theme {
 
 function applyTheme(theme: Theme) {
   document.documentElement.classList.toggle("theme-light", theme === "light");
+  document.documentElement.classList.add(`plat-${envPlatform}`);
   document.documentElement.style.colorScheme = theme;
 }
 

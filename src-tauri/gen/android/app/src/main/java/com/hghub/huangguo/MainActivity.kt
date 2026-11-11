@@ -11,6 +11,22 @@ import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
   private var currentWebView: WebView? = null
+  private var lastTopDp = 0
+  private var lastBottomDp = 0
+
+  private fun syncInsetsToWeb() {
+    val top = lastTopDp
+    val bottom = lastBottomDp
+    if (top > 0 || bottom > 0) {
+      currentWebView?.post {
+        currentWebView?.evaluateJavascript(
+          "document.documentElement.style.setProperty('--sat', '${top}px');" +
+          "document.documentElement.style.setProperty('--sab', '${bottom}px');",
+          null
+        )
+      }
+    }
+  }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
@@ -40,11 +56,9 @@ class MainActivity : TauriActivity() {
       val topDp = (topPx / density).toInt()
       val bottomDp = (bottomPx / density).toInt()
 
-      currentWebView?.evaluateJavascript(
-        "document.documentElement.style.setProperty('--sat', '${topDp}px');" +
-        "document.documentElement.style.setProperty('--sab', '${bottomDp}px');",
-        null
-      )
+      lastTopDp = topDp
+      lastBottomDp = bottomDp
+      syncInsetsToWeb()
       insets
     }
   }
@@ -52,6 +66,8 @@ class MainActivity : TauriActivity() {
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     currentWebView = webView
+    syncInsetsToWeb()
+    window.decorView.post { window.decorView.requestApplyInsets() }
 
     // 针对骁龙8 Gen 3 (Adreno 750) 开启硬件加速与渲染优化
     webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
