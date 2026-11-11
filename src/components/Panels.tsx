@@ -216,10 +216,11 @@ export function CommentsPanel({ videoId, ep, total, kind = "video", onClose }: {
                 <span className="text-[10px] text-dim">{c.time}</span>
               </div>
               <p className="text-[12.5px] text-on/80 mt-1 leading-relaxed whitespace-pre-wrap">{c.text}</p>
-              <div className="flex items-center gap-3 mt-1.5 text-[10.5px] text-dim">
-                <span className="flex items-center gap-1"><IHeart size={11} />{c.like_count || 0}</span>
-                {c.reply_count > 0 && <span>{c.reply_count} 条回复</span>}
-              </div>
+              {c.reply_count > 0 && (
+                <div className="flex items-center gap-3 mt-1.5 text-[10.5px] text-dim">
+                  <span>{c.reply_count} 条回复</span>
+                </div>
+              )}
             </div>
           </div>
         )) : loading ? (

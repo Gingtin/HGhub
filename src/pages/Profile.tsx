@@ -79,12 +79,27 @@ export default function Profile({ wide }: { wide: boolean }) {
         )}
 
         {/* 我的内容 */}
-        <div className="flex bg-s3 rounded-(--r-ctl) p-1 mt-4">
-          {([["fav", "我的收藏"], ["history", "观看历史"]] as const).map(([k, l]) => (
-            <button key={k} onClick={() => setTab(k)}
-              className={`flex-1 h-8 rounded-(--r-ctl) text-[12px] font-semibold pressable ${tab === k ? "tonal text-on-sec" : "text-mut"}`}
-              style={tab === k ? { background: "var(--p-sec)", color: "var(--p-primary)" } : undefined}>{l}</button>
-          ))}
+        <div className="flex items-center justify-between mt-4">
+          <div className="flex flex-1 bg-s3 rounded-(--r-ctl) p-1">
+            {([["fav", "我的收藏"], ["history", "观看历史"]] as const).map(([k, l]) => (
+              <button key={k} onClick={() => setTab(k)}
+                className={`flex-1 h-8 rounded-(--r-ctl) text-[12px] font-semibold pressable ${tab === k ? "tonal text-on-sec" : "text-mut"}`}
+                style={tab === k ? { background: "var(--p-sec)", color: "var(--p-primary)" } : undefined}>{l}</button>
+            ))}
+          </div>
+          {tab === "history" && history.length > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm("确定清空全部观看历史记录吗？")) {
+                  clearHistory();
+                }
+              }}
+              className="ml-3 px-2.5 py-1 text-[11px] text-dim hover:text-danger pressable transition-colors shrink-0"
+              title="清空观看历史"
+            >
+              清空
+            </button>
+          )}
         </div>
 
         <div className="mt-3">

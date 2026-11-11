@@ -51,16 +51,16 @@ function TabBar() {
           className="h-[54px] rounded-2xl flex items-center px-2 transition-all duration-300"
           style={{
             background: lightBar
-              ? "rgba(255, 255, 255, 0.9)"
+              ? "rgba(255, 255, 255, 0.92)"
               : overVideo
-                ? "rgba(14, 16, 22, 0.78)"
-                : "rgba(24, 26, 34, 0.88)",
-            backdropFilter: "blur(24px)",
-            WebkitBackdropFilter: "blur(24px)",
-            border: lightBar ? "1px solid rgba(0,0,0,0.06)" : "1px solid rgba(255,255,255,0.12)",
+                ? "rgba(8, 8, 10, 0.78)"
+                : "rgba(10, 10, 14, 0.85)",
+            backdropFilter: "blur(28px)",
+            WebkitBackdropFilter: "blur(28px)",
+            border: lightBar ? "1px solid rgba(0,0,0,0.06)" : "1px solid rgba(255,255,255,0.08)",
             boxShadow: lightBar
               ? "0 4px 20px rgba(0,0,0,0.06)"
-              : "0 8px 32px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.1)",
+              : "0 10px 32px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.08)",
           }}>
           {items.map(({ k, label, icon }) => {
             const on = tab === k;
@@ -318,8 +318,7 @@ function ShellInner({ collapsed, theater }: { collapsed: boolean; theater: boole
 function MobileShell() {
   const { platform } = useStore();
   return (
-    <div className={`absolute inset-0 flex flex-col bg-canvas plat-${platform}`}
-      style={{ "--sat": "max(env(safe-area-inset-top), 12px)", "--sab": "max(env(safe-area-inset-bottom), 16px)" } as React.CSSProperties}>
+    <div className={`absolute inset-0 flex flex-col bg-canvas plat-${platform}`}>
       <div className="relative flex-1 min-h-0">
         <AppBody />
       </div>

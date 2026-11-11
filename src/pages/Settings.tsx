@@ -77,6 +77,35 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
             </div>
           </Section>
 
+          {platform === "android" && (
+            <Section title="旗舰设备优化 (Samsung S24 Ultra 专属)">
+              <div className="px-3.5 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-mint animate-pulse" />
+                  <span className="text-[12.5px] font-bold text-on">Galaxy S24 Ultra 调优已就绪</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-2.5 text-[10.5px]">
+                  <div className="p-2 rounded-lg bg-s3/60 border border-white/5">
+                    <div className="text-dim">色彩模式</div>
+                    <div className="font-semibold text-on mt-0.5">AMOLED 纯黑深渊 (0% 漏光)</div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-s3/60 border border-white/5">
+                    <div className="text-dim">刷新率</div>
+                    <div className="font-semibold text-primary mt-0.5">120Hz LTPO 满血物理流畅</div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-s3/60 border border-white/5">
+                    <div className="text-dim">异形避让</div>
+                    <div className="font-semibold text-on mt-0.5">One UI 中置打孔与手势避让</div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-s3/60 border border-white/5">
+                    <div className="text-dim">解码加速</div>
+                    <div className="font-semibold text-amber-300 mt-0.5">骁龙8 Gen 3 硬件硬解</div>
+                  </div>
+                </div>
+              </div>
+            </Section>
+          )}
+
           <Section title="首页与播放">
             <div className="flex items-center gap-3 px-3.5 py-3">
               <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IGrid size={16} /></span>

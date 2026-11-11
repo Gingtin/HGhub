@@ -516,7 +516,7 @@ export default function Home({ active, bottomInset, wide = false }: { active: bo
                 {/* 右侧播放胶囊 */}
                 <button
                   type="button"
-                  className="px-3 py-1.5 rounded-full bg-primary text-on-primary text-[12px] font-bold shadow-md shrink-0 transition-transform group-hover:scale-105"
+                  className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-cyan-400 to-primary text-black text-[12px] font-black shadow-md shadow-primary/30 shrink-0 transition-transform group-hover:scale-105 active:scale-95"
                 >
                   续播
                 </button>

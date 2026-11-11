@@ -14,7 +14,7 @@ import { INITIAL_MACHINE_STATE, playerStateReducer } from "../playerStateMachine
 import { ArticlePanel, CommentsPanel, EpisodesPanel } from "./Panels";
 import { pushBackHandler } from "../back";
 import {
-  IBack, IBoltF, IChevR, IChevronDown, IChevronUp, IClose, ICommentF, ICompress, IExpand, IFileText, IHeart, IHeartF,
+  IBack, IBoltF, IChevR, IChevronDown, IChevronUp, IClose, ICommentF, ICompress, IExpand, IFileText,
   ILink, IList, ILockF, IPauseF, IPip, IPlayF, IPlus, IRotate, ISearch, IStar, IStarF, IVol, IVolMute,
 } from "../icons";
 
