@@ -3,9 +3,9 @@ import Feed from "../components/Feed";
 import { api, fmt, fmtTime } from "../api";
 import type { Detail, RankItem, VideoCard } from "../types";
 import { useStore } from "../store";
-import { Masonry, RowCard } from "../components/cards";
-import { Empty, Img } from "../components/ui";
-import { IFireF, IGrid, IPlayF, IRefresh, ISearch, IStarF, IStarsF, Logo } from "../icons";
+import { Masonry, RowCard, SkeletonRowCard, SkeletonWaterfallCard } from "../components/cards";
+import { Img } from "../components/ui";
+import { IChevR, IClose, IFireF, IGrid, IPlayF, IRefresh, ISearch, IStarF, IStarsF, Logo } from "../icons";
 
 function rankItemToVideoCard(r: RankItem): VideoCard {
   return {
@@ -25,9 +25,28 @@ function rankItemToVideoCard(r: RankItem): VideoCard {
   };
 }
 
+type ChipItem = {
+  id: string;
+  label: string;
+  type: "all" | "channel" | "search";
+  tag?: string;
+};
+
+const CATEGORY_CHIPS: readonly ChipItem[] = [
+  { id: "all", label: "全部精选", type: "all" },
+  { id: "ai-duanju", label: "AI短剧", type: "channel" },
+  { id: "ai-manju", label: "AI漫剧", type: "channel" },
+  { id: "ai-huanlian", label: "AI换脸", type: "channel" },
+  { id: "ai-mogai", label: "AI魔改", type: "channel" },
+  { id: "战神", label: "战神逆袭", type: "search", tag: "战神" },
+  { id: "都市", label: "都市爽剧", type: "search", tag: "都市" },
+  { id: "古装", label: "古装甜宠", type: "search", tag: "古装" },
+  { id: "反转", label: "高能反转", type: "search", tag: "反转" },
+];
+
 /* =========================================================================
    首页（双模设计）：
-   1. 海报大厅（Hall）：继续观看横幅 + 今日热播横滑 + 猜你喜欢瀑布流 + 一键换一批
+   1. 海报大厅（Hall）：继续观看横幅 + 分类快捷筛选 + 今日热播TOP横滑 + 瀑布流 + 一键换一批
    2. 沉浸刷剧（Feed）：类似抖音上下滑切剧，自带【换一批】与【切回大厅】浮钮
    ========================================================================= */
 
@@ -42,6 +61,9 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
   const [discoverPage, setDiscoverPage] = useState(1);
   const [loadingDiscover, setLoadingDiscover] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [categoryLoading, setCategoryLoading] = useState(false);
+  const [heroDismissed, setHeroDismissed] = useState(false);
   const [lastWatchedDetail, setLastWatchedDetail] = useState<Detail | null>(null);
   const hallLoadedRef = useRef(false);
 
@@ -94,36 +116,104 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
     }
   }, [initHall]);
 
-  // 大厅“换一批”：从全库 670+ 页中随机抽取一页
+  // 切换分类芯片
+  const handleSelectCategory = useCallback(async (chip: ChipItem) => {
+    if (activeCategory === chip.id && chip.id !== "all") return;
+    setActiveCategory(chip.id);
+    setCategoryLoading(true);
+    try {
+      if (chip.id === "all") {
+        const randomStart = Math.floor(Math.random() * 25) + 1;
+        const res = await api.feed(randomStart, 12);
+        if (res?.items?.length) {
+          setDiscoverVideos(res.items);
+          setDiscoverPage(randomStart);
+        }
+      } else if (chip.type === "channel") {
+        const res = await api.category(chip.id, 1, 12);
+        if (res?.items?.length) {
+          setDiscoverVideos(res.items);
+          setDiscoverPage(1);
+        }
+      } else if (chip.type === "search") {
+        const tag = chip.tag || chip.label || "短剧";
+        const res = await api.search(tag, 1, 12);
+        if (res?.items?.length) {
+          setDiscoverVideos(res.items);
+          setDiscoverPage(1);
+        }
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setCategoryLoading(false);
+    }
+  }, [activeCategory]);
+
+  // 大厅“换一批”：根据当前所选分类随机换一批
   const handleShuffleDiscover = useCallback(async () => {
-    if (refreshing) return;
+    if (refreshing || categoryLoading) return;
     setRefreshing(true);
     try {
-      // 随机挑选 1 到 60 之间的页码
-      const randomPage = Math.floor(Math.random() * 60) + 1;
-      const res = await api.feed(randomPage, 12);
-      if (res?.items?.length) {
-        setDiscoverVideos(res.items);
-        setDiscoverPage(randomPage);
-        toast("已为您换了一批精选短剧", "ok");
+      const chip = CATEGORY_CHIPS.find((c) => c.id === activeCategory);
+      if (!chip || chip.id === "all") {
+        const randomPage = Math.floor(Math.random() * 60) + 1;
+        const res = await api.feed(randomPage, 12);
+        if (res?.items?.length) {
+          setDiscoverVideos(res.items);
+          setDiscoverPage(randomPage);
+          toast("已为您换了一批精选短剧", "ok");
+        } else {
+          toast("暂未获取到更多内容，请稍后再试", "info");
+        }
+      } else if (chip.type === "channel") {
+        const randomPage = Math.floor(Math.random() * 8) + 1;
+        const res = await api.category(chip.id, randomPage, 12);
+        if (res?.items?.length) {
+          setDiscoverVideos(res.items);
+          setDiscoverPage(randomPage);
+          toast(`已换一批【${chip.label}】`, "ok");
+        } else {
+          toast("暂未获取到更多内容", "info");
+        }
       } else {
-        toast("暂未获取到更多内容，请稍后再试", "info");
+        const tag = chip.tag || chip.label || "短剧";
+        const randomPage = Math.floor(Math.random() * 6) + 1;
+        const res = await api.search(tag, randomPage, 12);
+        if (res?.items?.length) {
+          setDiscoverVideos(res.items);
+          setDiscoverPage(randomPage);
+          toast(`已换一批【${chip.label}】`, "ok");
+        } else {
+          toast("暂未获取到更多内容", "info");
+        }
       }
     } catch (e) {
       toast((e as Error).message || "刷新失败", "info");
     } finally {
       setRefreshing(false);
     }
-  }, [refreshing, toast]);
+  }, [activeCategory, categoryLoading, refreshing, toast]);
 
   // 大厅瀑布流无限滚动加载
   const handleLoadMoreDiscover = useCallback(async () => {
-    if (loadingDiscover) return;
+    if (loadingDiscover || categoryLoading) return;
     setLoadingDiscover(true);
     try {
       const nextPage = discoverPage + 1;
-      const res = await api.feed(nextPage, 12);
-      const list = res?.items || [];
+      const chip = CATEGORY_CHIPS.find((c) => c.id === activeCategory);
+      let list: VideoCard[] = [];
+      if (!chip || chip.id === "all") {
+        const res = await api.feed(nextPage, 12);
+        list = res?.items || [];
+      } else if (chip.type === "channel") {
+        const res = await api.category(chip.id, nextPage, 12);
+        list = res?.items || [];
+      } else if (chip.type === "search") {
+        const tag = chip.tag || chip.label || "短剧";
+        const res = await api.search(tag, nextPage, 12);
+        list = res?.items || [];
+      }
       if (list.length) {
         setDiscoverVideos((prev) => {
           const seen = new Set(prev.map((x) => x.id));
@@ -136,7 +226,7 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
     } finally {
       setLoadingDiscover(false);
     }
-  }, [discoverPage, loadingDiscover]);
+  }, [activeCategory, categoryLoading, discoverPage, loadingDiscover]);
 
   // -----------------------------------------------------------------------
   // 2. 沉浸刷剧流状态与数据
@@ -174,7 +264,7 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
   useEffect(() => {
     if (homeMode === "feed" && !feedLoadedRef.current) {
       feedLoadedRef.current = true;
-      const randomInitialPage = Math.floor(Math.random() * 25) + 1;
+      const randomInitialPage = Math.floor(Math.random() * 30) + 1;
       void loadFeedPage(randomInitialPage, true);
     }
   }, [homeMode, loadFeedPage]);
@@ -184,7 +274,7 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
     if (feedRefreshing) return;
     setFeedRefreshing(true);
     try {
-      const randomPage = Math.floor(Math.random() * 50) + 1;
+      const randomPage = Math.floor(Math.random() * 60) + 1;
       await loadFeedPage(randomPage, true);
       toast("已为您换了一批短剧", "ok");
     } finally {
@@ -212,39 +302,49 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
             }}
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-black">
-            <div className="w-9 h-9 spinner" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black gap-3">
+            <Logo size={42} className="animate-pulse opacity-80" />
+            <div className="text-[12px] text-white/50 tracking-wider">正在加载短剧...</div>
           </div>
         )}
 
         {/* 沉浸流顶部浮动药丸：切回大厅 & 换一批 */}
         <div
-          className="absolute right-3.5 z-40 flex items-center gap-2 pointer-events-auto"
+          className="absolute inset-x-0 z-40 flex items-center justify-between px-3.5 pointer-events-none"
           style={{ top: "calc(var(--sat, 0px) + 8px)" }}
         >
-          <button
-            type="button"
-            onClick={handleShuffleFeed}
-            disabled={feedRefreshing}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11.5px] font-medium bg-black/60 backdrop-blur-md text-amber-300 border border-amber-500/30 hover:bg-black/80 transition-all active:scale-95 shadow-md"
-            title="换一批新短剧"
-          >
-            <IRefresh size={13} className={feedRefreshing ? "animate-spin" : ""} />
-            <span>换一批</span>
-          </button>
+          {/* 左侧：微型品牌药丸 */}
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold bg-black/60 backdrop-blur-md text-white border border-white/15 pointer-events-auto shadow-md">
+            <Logo size={18} />
+            <span>随心刷</span>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setHomeMode("hall");
-              toast("已切回选剧大厅", "ok");
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-medium bg-black/60 backdrop-blur-md text-white border border-white/15 hover:bg-black/80 transition-all active:scale-95 shadow-md"
-            title="切换到海报选剧大厅"
-          >
-            <IGrid size={13} />
-            <span>选剧大厅</span>
-          </button>
+          {/* 右侧：换一批 & 选剧大厅 */}
+          <div className="flex items-center gap-2 pointer-events-auto">
+            <button
+              type="button"
+              onClick={handleShuffleFeed}
+              disabled={feedRefreshing}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-semibold bg-black/60 backdrop-blur-md text-amber-300 border border-amber-500/30 hover:bg-black/80 transition-all active:scale-95 shadow-md"
+              title="换一批新短剧"
+            >
+              <IRefresh size={13} className={feedRefreshing ? "animate-spin" : ""} />
+              <span>换一批</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setHomeMode("hall");
+                toast("已切回选剧大厅", "ok");
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-semibold bg-black/60 backdrop-blur-md text-white border border-white/15 hover:bg-black/80 transition-all active:scale-95 shadow-md"
+              title="切换到海报选剧大厅"
+            >
+              <IGrid size={13} />
+              <span>选剧大厅</span>
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -256,11 +356,16 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
     ...hotVideos.map((x) => x.id),
   ];
 
+  const watchedPercent =
+    latestWatch && latestWatch.dur > 0
+      ? Math.min(100, Math.round((latestWatch.t / latestWatch.dur) * 100))
+      : 0;
+
   return (
     <div className="absolute inset-0 bg-canvas flex flex-col text-on select-none">
       {/* 顶部常驻导航栏 */}
       <header
-        className="shrink-0 z-20 px-4 pb-2.5 bg-canvas/80 backdrop-blur-xl border-b border-white/5 transition-all"
+        className="shrink-0 z-20 px-4 pb-2.5 bg-canvas/85 backdrop-blur-xl border-b border-white/5 transition-all"
         style={{ paddingTop: "calc(var(--sat, 0px) + 10px)" }}
       >
         <div className="max-w-4xl mx-auto flex items-center justify-between">
@@ -270,7 +375,7 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
               <div className="text-[17px] font-bold leading-tight tracking-tight flex items-center gap-1.5">
                 <span>黄果短剧</span>
                 <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-primary/20 text-primary border border-primary/30">
-                  AI
+                  PRO
                 </span>
               </div>
               <div className="text-[10px] text-mut leading-none mt-0.5">
@@ -309,23 +414,36 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
       <main
         onScroll={(e) => {
           const el = e.currentTarget;
-          if (el.scrollHeight - el.scrollTop - el.clientHeight < 300) {
+          if (el.scrollHeight - el.scrollTop - el.clientHeight < 350) {
             void handleLoadMoreDiscover();
           }
         }}
         className="flex-1 scroll-y px-4 pt-3.5 pb-24 max-w-4xl mx-auto w-full"
       >
         {/* ================= 1. 继续观看（上次追剧横幅卡片） ================= */}
-        {latestWatch && lastWatchedDetail && (
-          <section className="mb-6 a-rise">
+        {latestWatch && lastWatchedDetail && !heroDismissed && (
+          <section className="mb-5 a-rise">
             <div className="flex items-center justify-between mb-2 px-0.5">
               <span className="text-[13px] font-bold text-on flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                 <span>继续观看</span>
               </span>
-              <span className="text-[11px] text-mut">
-                上次看到第 {latestWatch.ep} 集
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-mut">
+                  上次看到第 {latestWatch.ep} 集
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setHeroDismissed(true);
+                  }}
+                  aria-label="关闭继续观看提示"
+                  className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white flex items-center justify-center transition-colors"
+                >
+                  <IClose size={11} />
+                </button>
+              </div>
             </div>
 
             <div
@@ -348,8 +466,8 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
               />
 
               <div className="relative flex items-center gap-3.5">
-                {/* 封面缩略图 */}
-                <div className="relative w-16 h-22 rounded-xl overflow-hidden bg-black shrink-0 ring-1 ring-white/10 shadow-md">
+                {/* 封面缩略图：严格 2:3 黄金比例，杜绝高度坍塌 */}
+                <div className="relative w-16 h-24 rounded-xl overflow-hidden bg-black shrink-0 ring-1 ring-white/10 shadow-md">
                   <Img src={lastWatchedDetail.cover} />
                   <div className="absolute inset-0 bg-black/25 flex items-center justify-center group-hover:bg-black/10 transition-colors">
                     <span className="w-7 h-7 rounded-full bg-primary/90 text-on-primary flex items-center justify-center shadow-md">
@@ -371,6 +489,11 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
                       {latestWatch.t > 0 ? fmtTime(latestWatch.t) : "刚开始"}
                       {latestWatch.dur > 0 && ` / ${fmtTime(latestWatch.dur)}`}
                     </span>
+                    {watchedPercent > 0 && (
+                      <span className="text-[10px] text-primary/80 font-medium ml-auto">
+                        已看 {watchedPercent}%
+                      </span>
+                    )}
                   </div>
 
                   {/* 进度条 */}
@@ -378,11 +501,7 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
                     <div
                       className="h-full bg-primary transition-all rounded-full"
                       style={{
-                        width: `${
-                          latestWatch.dur > 0
-                            ? Math.min(100, Math.round((latestWatch.t / latestWatch.dur) * 100))
-                            : 10
-                        }%`,
+                        width: `${Math.max(watchedPercent || 10, 4)}%`,
                       }}
                     />
                   </div>
@@ -400,61 +519,104 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
           </section>
         )}
 
-        {/* ================= 2. 今日热播（横向卷轴） ================= */}
-        {hotVideos.length > 0 && (
-          <section className="mb-6">
-            <div className="flex items-center justify-between mb-2.5 px-0.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-amber-400">
-                  <IFireF size={16} />
-                </span>
-                <span className="text-[15px] font-bold text-on">今日热播</span>
-                <span className="text-[11px] text-mut ml-1">大家都在看</span>
-              </div>
+        {/* ================= 2. 分类快捷筛选栏 ================= */}
+        <div className="scroll-x flex items-center gap-2 pb-2 mb-4 snap-x">
+          {CATEGORY_CHIPS.map((chip) => {
+            const isSelected = activeCategory === chip.id;
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => handleSelectCategory(chip)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-[11.5px] font-semibold transition-all active:scale-95 snap-start ${
+                  isSelected
+                    ? "bg-primary text-on-primary shadow-sm shadow-primary/25 ring-1 ring-primary"
+                    : "bg-s2 hover:bg-s3 text-dim hover:text-on ring-1 ring-white/5"
+                }`}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ================= 3. 今日热播（横向卷轴 + TOP 排行角标） ================= */}
+        <section className="mb-6">
+          <div className="flex items-center justify-between mb-2.5 px-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-amber-400">
+                <IFireF size={16} />
+              </span>
+              <span className="text-[15px] font-bold text-on">今日热播</span>
+              <span className="text-[11px] text-mut ml-1">TOP 实时风向标</span>
             </div>
 
-            <div className="scroll-x flex gap-3 pb-1 snap-x">
-              {hotVideos.map((v, i) => (
-                <RowCard
-                  key={v.id}
-                  v={v}
-                  onOpen={() => {
-                    push({
-                      kind: "feed",
-                      videoIds: hotVideos.map((x) => x.id),
-                      index: i,
-                      title: "今日热播",
-                    });
-                  }}
-                />
-              ))}
-            </div>
-          </section>
-        )}
+            <button
+              type="button"
+              onClick={() => push({ kind: "ranks" })}
+              className="text-[11.5px] text-mut hover:text-primary transition-colors flex items-center gap-0.5"
+            >
+              <span>完整榜单</span>
+              <IChevR size={12} />
+            </button>
+          </div>
 
-        {/* ================= 3. 猜你喜欢 / 发现新剧（瀑布流） ================= */}
+          <div className="scroll-x flex gap-3 pb-1 snap-x">
+            {hotVideos.length > 0
+              ? hotVideos.map((v, i) => (
+                  <RowCard
+                    key={v.id}
+                    v={v}
+                    rank={i + 1}
+                    onOpen={() => {
+                      push({
+                        kind: "feed",
+                        videoIds: hotVideos.map((x) => x.id),
+                        index: i,
+                        title: "今日热播",
+                      });
+                    }}
+                  />
+                ))
+              : Array.from({ length: 4 }).map((_, i) => <SkeletonRowCard key={i} />)}
+          </div>
+        </section>
+
+        {/* ================= 4. 猜你喜欢 / 分类探索（瀑布流） ================= */}
         <section>
           <div className="flex items-center justify-between mb-3 px-0.5">
             <div className="flex items-center gap-1.5">
               <span className="text-primary">
                 <IStarsF size={16} />
               </span>
-              <span className="text-[15px] font-bold text-on">猜你喜欢</span>
-              <span className="text-[11px] text-mut ml-1">全库海量随机探索</span>
+              <span className="text-[15px] font-bold text-on">
+                {activeCategory === "all"
+                  ? "猜你喜欢"
+                  : CATEGORY_CHIPS.find((c) => c.id === activeCategory)?.label || "短剧精选"}
+              </span>
+              <span className="text-[11px] text-mut ml-1">海量探索</span>
             </div>
 
             <button
               type="button"
               onClick={handleShuffleDiscover}
-              disabled={refreshing}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-s2 hover:bg-s3 text-primary border border-primary/20 transition-all active:scale-95 pressable"
+              disabled={refreshing || categoryLoading}
+              className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-medium bg-s2 hover:bg-s3 text-primary border border-primary/20 transition-all active:scale-95 pressable"
             >
               <IRefresh size={12} className={refreshing ? "animate-spin" : ""} />
               <span>换一批</span>
             </button>
           </div>
 
-          {discoverVideos.length > 0 ? (
+          {categoryLoading ? (
+            <div className="columns-2 gap-2.5 [column-fill:balance]">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="break-inside-avoid">
+                  <SkeletonWaterfallCard />
+                </div>
+              ))}
+            </div>
+          ) : discoverVideos.length > 0 ? (
             <Masonry
               videos={discoverVideos}
               onOpen={(v) => {
@@ -463,17 +625,21 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
                   kind: "feed",
                   videoIds: discoverVideos.map((x) => x.id),
                   index: idx >= 0 ? idx : 0,
-                  title: "猜你喜欢",
+                  title: activeCategory === "all" ? "猜你喜欢" : "精选短剧",
                 });
               }}
             />
           ) : (
-            <div className="py-12 flex items-center justify-center">
-              <div className="w-8 h-8 spinner" />
+            <div className="columns-2 gap-2.5 [column-fill:balance]">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="break-inside-avoid">
+                  <SkeletonWaterfallCard />
+                </div>
+              ))}
             </div>
           )}
 
-          {loadingDiscover && (
+          {loadingDiscover && discoverVideos.length > 0 && (
             <div className="py-6 flex items-center justify-center">
               <div className="w-6 h-6 spinner" />
             </div>

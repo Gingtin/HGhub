@@ -127,8 +127,21 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const lockArmedRef = useRef(false);
   const [scrub, setScrub] = useState<{ pct: number; target: number } | null>(null);
   const scrubTarget = useRef<number | null>(null);
-  /* 竖屏下横屏视频适应模式 + 双指无级缩放/平移 */
-  const [portraitFit, setPortraitFit] = useState<"contain" | "cover">("contain");
+  /* 竖屏下横屏视频适应模式 + 双指无级缩放/平移（记住用户选择，适配三星S24U等宽屏机型） */
+  const [portraitFit, setPortraitFit] = useState<"contain" | "cover">(() => {
+    try {
+      return (localStorage.getItem("hghub_fit") as "contain" | "cover") || "contain";
+    } catch {
+      return "contain";
+    }
+  });
+  const updatePortraitFit = useCallback((fit: "contain" | "cover" | ((f: "contain" | "cover") => "contain" | "cover")) => {
+    setPortraitFit((curr) => {
+      const next = typeof fit === "function" ? fit(curr) : fit;
+      try { localStorage.setItem("hghub_fit", next); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
   const [zoom, setZoom] = useState({ scale: 1, x: 0, y: 0, gesturing: false });
   const pinchRef = useRef<{
     dist0: number; midX0: number; midY0: number; scale0: number; x0: number; y0: number;
@@ -418,7 +431,6 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     dispatchMachine({ type: "LOAD_START" });
     setDescOpen(false);
     setVsize({ w: 0, h: 0 });
-    setPortraitFit("contain");
     setZoom({ scale: 1, x: 0, y: 0, gesturing: false });
   }, [playKey]);
 
@@ -996,9 +1008,9 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                         onClick={() => {
                           if (zoom.scale > 1.05) {
                             setZoom({ scale: 1, x: 0, y: 0, gesturing: false });
-                            setPortraitFit("contain");
+                            updatePortraitFit("contain");
                           } else {
-                            setPortraitFit((f) => (f === "contain" ? "cover" : "contain"));
+                            updatePortraitFit((f) => (f === "contain" ? "cover" : "contain"));
                           }
                         }}
                         className="hg-chip-strong backdrop-blur-md px-3 h-7 rounded-full text-[11.5px] font-semibold flex items-center gap-1.5 pressable elev-1">
@@ -1225,7 +1237,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                             type="button"
                             onClick={() => {
                               const next = portraitFit === "contain" ? "cover" : "contain";
-                              setPortraitFit(next);
+                              updatePortraitFit(next);
                               toast(next === "cover" ? "已切换：满屏铺满 (19.5:9 沉浸)" : "已切换：原画完整 (防字幕裁剪)", "info");
                             }}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold text-white/95 backdrop-blur-md pressable transition-all"

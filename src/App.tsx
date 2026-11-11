@@ -1,6 +1,6 @@
-import React, { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useStore, type Page, type Tab } from "./store";
-import { isMobile, selfTest } from "./api";
+import React, { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useStore, type FeedContext, type Page, type Tab } from "./store";
+import { api, isMobile, selfTest } from "./api";
 import { addPluginListener, invoke } from "@tauri-apps/api/core";
 import { runBack } from "./back";
 import Home from "./pages/Home";
@@ -104,6 +104,64 @@ function TabBar() {
   );
 }
 
+/* ============ 堆栈播放流（支持无限向下续刷，杜绝死局卡死） ============ */
+function StackFeedPage({
+  page,
+  onBack,
+  top,
+  bottomInset,
+}: {
+  page: FeedContext;
+  onBack: () => void;
+  top: boolean;
+  bottomInset: number;
+}) {
+  const [videoIds, setVideoIds] = useState<number[]>(page.videoIds);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const pageRef = useRef(1);
+
+  const handleNearEnd = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = pageRef.current + 1;
+      const res = await api.feed(nextPage, 10);
+      const items = res?.items || [];
+      if (items.length) {
+        pageRef.current = nextPage;
+        setVideoIds((prev) => {
+          const seen = new Set(prev);
+          const fresh = items.map((x) => x.id).filter((id) => !seen.has(id));
+          return fresh.length ? [...prev, ...fresh] : prev;
+        });
+      } else {
+        setHasMore(false);
+      }
+    } catch {
+      /* 静默失败 */
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore]);
+
+  return (
+    <Feed
+      videoIds={videoIds}
+      startIndex={page.index}
+      title={page.title}
+      kind={page.feedKind || "video"}
+      startEp={page.startEp}
+      startTime={page.startTime}
+      mode="context"
+      active={top}
+      bottomInset={bottomInset}
+      onBack={onBack}
+      onNearEnd={handleNearEnd}
+    />
+  );
+}
+
 /* ============ 堆栈页面 ============ */
 function StackPage({ page, onBack, wide, top, bottomInset }: {
   page: Page; onBack: () => void; wide: boolean; top: boolean; bottomInset: number;
@@ -111,9 +169,7 @@ function StackPage({ page, onBack, wide, top, bottomInset }: {
   return (
     <Suspense fallback={<PageFallback />}>
       {page.kind === "feed" && (
-        <Feed videoIds={page.videoIds} startIndex={page.index} title={page.title} kind={page.feedKind || "video"}
-          startEp={page.startEp} startTime={page.startTime}
-          mode="context" active={top} bottomInset={bottomInset} onBack={onBack} />
+        <StackFeedPage page={page} onBack={onBack} top={top} bottomInset={bottomInset} />
       )}
       {page.kind === "channel" && <ChannelPage cate={page.cate} name={page.name} onBack={onBack} wide={wide} />}
       {page.kind === "ranks" && <RankPage onBack={onBack} wide={wide} />}

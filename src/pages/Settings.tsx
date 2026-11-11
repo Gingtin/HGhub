@@ -4,7 +4,7 @@ import { useStore } from "../store";
 import { Modal, Toggle } from "../components/ui";
 import LinePicker from "../components/LinePicker";
 import { copyPlaybackLog, initPlaybackLog, setPlaybackLog, usePlaybackLog } from "../playbackDiagnostics";
-import { IBack, IBoltF, IBroom, IChevR, IGrid, IHeart, IInfo, ILink, ILockF, IMoon, IRefresh, ISettings, ISun, IVolMute } from "../icons";
+import { IBack, IBoltF, IBroom, IChevR, IGrid, IInfo, ILink, ILockF, IMoon, IRefresh, ISettings, IStarF, ISun, IVolMute } from "../icons";
 
 /* 独立设置页：线路 / 外观 / 播放 / 本地数据 / 清理缓存 / 网络诊断 / 关于
    入口：Windows 侧栏「设置」、Android「我的」右上角齿轮 */
@@ -116,9 +116,9 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
 
           <Section title="本地数据">
             <div className="flex items-center gap-3 px-3.5 py-3">
-              <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IHeart size={16} /></span>
+              <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-amber-300"><IStarF size={16} /></span>
               <div className="flex-1">
-                <div className="text-[12.5px] text-on">本地喜欢</div>
+                <div className="text-[12.5px] text-on">追剧收藏</div>
                 <div className="text-[10.5px] text-mut">{favs.length} 部收藏 · {history.length} 条观看记录</div>
               </div>
             </div>
